@@ -22,5 +22,10 @@ systemctl is-active ox-ai-workshop-deploy.timer || true
 systemctl list-timers ox-ai-workshop-deploy.timer --no-pager || true
 
 echo
+echo "== codex worker timer =="
+systemctl is-active ox-ai-workshop-codex-worker.timer || true
+systemctl list-timers ox-ai-workshop-codex-worker.timer --no-pager || true
+
+echo
 echo "== deploy status =="
 cat /home/sato/ox-ai-workshop-builder/data/deploy-status.json 2>/dev/null || echo "no deploy status yet"

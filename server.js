@@ -13,11 +13,15 @@ const PROJECTS_DIR = path.join(DATA_DIR, "projects");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 const GENERATED_DIR = path.join(DATA_DIR, "generated");
 const CODEX_RUNS_DIR = path.join(DATA_DIR, "codex-runs");
+const CODEX_REQUESTS_DIR = path.join(DATA_DIR, "codex-requests");
+const CODEX_RESULTS_DIR = path.join(DATA_DIR, "codex-results");
+const CODEX_LOGS_DIR = path.join(DATA_DIR, "codex-logs");
 const PUBLIC_DIR = path.join(APP_ROOT, "public");
 const MAX_BODY_BYTES = Number(process.env.OX_MAX_UPLOAD_BYTES || 30 * 1024 * 1024);
 const AUTH_ID = process.env.OX_LOGIN_ID || "oyo";
 const AUTH_PASS = process.env.OX_LOGIN_PASS || "oxai";
 const CODEX_ENABLED = process.env.OX_CODEX_ENABLED !== "0";
+const CODEX_EXTERNAL = process.env.OX_CODEX_EXTERNAL === "1";
 const CODEX_ON_CREATE = process.env.OX_CODEX_ON_CREATE !== "0";
 const CODEX_ON_IMPROVE = process.env.OX_CODEX_ON_IMPROVE !== "0";
 const CODEX_MODEL = process.env.OX_CODEX_MODEL || "";
@@ -96,6 +100,9 @@ async function ensureDirs() {
   await fsp.mkdir(UPLOADS_DIR, { recursive: true });
   await fsp.mkdir(GENERATED_DIR, { recursive: true });
   await fsp.mkdir(CODEX_RUNS_DIR, { recursive: true });
+  await fsp.mkdir(CODEX_REQUESTS_DIR, { recursive: true });
+  await fsp.mkdir(CODEX_RESULTS_DIR, { recursive: true });
+  await fsp.mkdir(CODEX_LOGS_DIR, { recursive: true });
   await fsp.mkdir(DEPLOY_REQUESTS_DIR, { recursive: true });
 }
 
@@ -327,9 +334,22 @@ function projectPath(id) {
   return path.join(PROJECTS_DIR, id, "project.json");
 }
 
-async function loadProject(id) {
+async function loadProjectRaw(id) {
   const raw = await fsp.readFile(projectPath(id), "utf8");
   return JSON.parse(raw);
+}
+
+async function loadProject(id) {
+  const project = await loadProjectRaw(id);
+  const externalLogFile = path.join(CODEX_LOGS_DIR, `${id}.log`);
+  const externalLogs = await fsp.readFile(externalLogFile, "utf8")
+    .then((text) => text.split(/\r?\n/).filter(Boolean))
+    .catch(() => []);
+  if (externalLogs.length) {
+    const baseLogs = Array.isArray(project.logs) ? project.logs : [];
+    project.logs = [...baseLogs, ...externalLogs];
+  }
+  return project;
 }
 
 async function saveProject(project) {
@@ -349,8 +369,13 @@ async function deleteProject(id) {
 
 async function appendLog(project, line) {
   const stamped = `[${new Date().toISOString()}] ${line}`;
+  project.logs = Array.isArray(project.logs) ? project.logs : [];
   project.logs.push(stamped);
   await saveProject(project);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function selectedTemplates(ids) {
@@ -1882,19 +1907,25 @@ async function runCodexIfAvailable(project, appDir) {
   }
   const hasImprovement = Array.isArray(project.improvementHistory) && project.improvementHistory.length > 0;
   if (!hasImprovement && !CODEX_ON_CREATE) {
-    await appendLog(project, "初回作成はローカル生成モードで完了しました。Codex CLIは改良時のみ使用します。");
+    await appendLog(project, "初回作成はローカル生成モードで完了しました。AIによる改良は改良時に実行します。");
     return;
   }
   if (hasImprovement && !CODEX_ON_IMPROVE) {
-    await appendLog(project, "改良もローカル生成モードで反映しました。Codex CLIは使用していません。");
+    await appendLog(project, "改良もローカル生成モードで反映しました。外部の開発AIは使用していません。");
     return;
   }
   if (!commandExists("codex")) {
-    await appendLog(project, "Codex CLIが見つからないため、ローカル生成のデモアプリを表示します。");
-    return;
+    if (!CODEX_EXTERNAL) {
+      await appendLog(project, "開発AIを起動できないため、ローカル生成のデモアプリを表示します。");
+      return;
+    }
   }
 
-  await appendLog(project, hasImprovement ? "Codex CLIで改良指示を反映します。" : "Codex CLIでアプリ作成指示を反映します。");
+  await appendLog(project, hasImprovement ? "AIで改良指示を反映します。" : "AIでアプリ作成指示を反映します。");
+  if (CODEX_EXTERNAL) {
+    await runExternalCodex(project, appDir);
+    return;
+  }
   await appendLog(project, "codex execを起動しました。ファイル差分を作成しています。");
   const codexHome = await prepareCodexHome(appDir);
   const prompt = await fsp.readFile(path.join(appDir, "prompt.md"), "utf8");
@@ -1952,8 +1983,8 @@ async function runCodexIfAvailable(project, appDir) {
         clearTimeout(timer);
         settled = true;
         const message = code === 0
-          ? "Codex CLIの反映が完了しました。"
-          : `Codex CLIが終了しました。exit=${code}。ローカル生成結果を表示します。`;
+          ? "開発AIの反映が完了しました。"
+          : `開発AIが終了しました。exit=${code}。ローカル生成結果を表示します。`;
         appendLog(project, message).then(resolve);
       });
     });
@@ -1962,8 +1993,40 @@ async function runCodexIfAvailable(project, appDir) {
   }
 }
 
+async function runExternalCodex(project, appDir) {
+  const requestFile = path.join(CODEX_REQUESTS_DIR, `${project.id}.json`);
+  const resultFile = path.join(CODEX_RESULTS_DIR, `${project.id}.json`);
+  const logFile = path.join(CODEX_LOGS_DIR, `${project.id}.log`);
+  await fsp.rm(resultFile, { force: true }).catch(() => {});
+  await fsp.rm(logFile, { force: true }).catch(() => {});
+  await fsp.writeFile(requestFile, JSON.stringify({
+    projectId: project.id,
+    requestedAt: new Date().toISOString(),
+    appPath: path.relative(DATA_DIR, appDir),
+    promptFile: "prompt.md"
+  }, null, 2), "utf8");
+  await appendLog(project, "AI開発ワーカーに作業を依頼しました。");
+  await appendLog(project, "ワーカーが解析エンジンとUIの改良を開始します。");
+
+  const started = Date.now();
+  while (Date.now() - started < CODEX_TIMEOUT_MS) {
+    const result = await readJsonFile(resultFile, null);
+    if (result) {
+      if (result.ok) {
+        await appendLog(project, "AI開発ワーカーの反映が完了しました。");
+      } else {
+        await appendLog(project, `AI開発ワーカーが完了できませんでした。${result.message || "ローカル生成結果を表示します。"}`);
+      }
+      return;
+    }
+    await sleep(1200);
+  }
+
+  await appendLog(project, "AI開発ワーカーの処理が長くなっているため、現在の生成結果を先に表示します。");
+}
+
 async function runProjectJob(projectId) {
-  let project = await loadProject(projectId);
+  let project = await loadProjectRaw(projectId);
   project.status = "generating";
   project.updatedAt = new Date().toISOString();
   await saveProject(project);
@@ -1977,9 +2040,9 @@ async function runProjectJob(projectId) {
     await appendLog(project, "index.html / app.css / app.js を生成しました。");
     await appendLog(project, "AIに渡すプロンプトを組み立てました。");
     await runCodexIfAvailable(project, appDir);
-    project = await loadProject(projectId);
+    project = await loadProjectRaw(projectId);
     await appendLog(project, "生成ファイルを確認し、デモURLへ反映しています。");
-    project = await loadProject(projectId);
+    project = await loadProjectRaw(projectId);
     project.status = "ready";
     project.previewUrl = `/archive/${project.id}/`;
     project.updatedAt = new Date().toISOString();
@@ -1987,7 +2050,7 @@ async function runProjectJob(projectId) {
     await saveProject(project);
     jobs.set(projectId, project.status);
   } catch (error) {
-    project = await loadProject(projectId).catch(() => project);
+    project = await loadProjectRaw(projectId).catch(() => project);
     project.status = "error";
     project.error = error.message;
     project.updatedAt = new Date().toISOString();
@@ -2070,7 +2133,7 @@ async function handleImproveProject(req, res, projectId) {
     return;
   }
 
-  const project = await loadProject(projectId);
+  const project = await loadProjectRaw(projectId);
   project.improvementHistory = Array.isArray(project.improvementHistory) ? project.improvementHistory : [];
   project.improvementHistory.push({
     target,

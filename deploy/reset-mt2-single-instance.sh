@@ -92,17 +92,13 @@ docker run -d \
   --name "${APP_CONTAINER}" \
   --restart unless-stopped \
   --network "${NETWORK}" \
-  --security-opt seccomp=unconfined \
-  --security-opt apparmor=unconfined \
-  --cap-add SYS_ADMIN \
-  --cap-add NET_ADMIN \
   "${ENV_ARGS[@]}" \
   -v "${DATA_DIR}:/app/data" \
-  -v /home/sato/.codex:/root/.codex \
   -e HOME=/root \
   -e OX_LOGIN_ID=oyo \
   -e OX_LOGIN_PASS=oxai \
   -e OX_CODEX_ENABLED=1 \
+  -e OX_CODEX_EXTERNAL=1 \
   -e OX_CODEX_ON_CREATE=1 \
   -e OX_CODEX_ON_IMPROVE=1 \
   "${IMAGE}"
