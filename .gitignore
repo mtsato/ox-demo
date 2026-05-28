@@ -1,0 +1,6 @@
+data/
+screenshots/
+node_modules/
+npm-debug.log
+.DS_Store
+.deploy.env

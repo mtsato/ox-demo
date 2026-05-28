@@ -1,0 +1,15 @@
+{
+  "name": "ox-ai-workshop-builder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OX AI workshop application builder for OYO branch workshops",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "OX_CODEX_ENABLED=0 node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}

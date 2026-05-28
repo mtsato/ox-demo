@@ -1,0 +1,7 @@
+data
+screenshots
+.git
+.deploy.env
+node_modules
+npm-debug.log
+.DS_Store
