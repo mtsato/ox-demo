@@ -1861,6 +1861,7 @@ async function runCodexIfAvailable(project, appDir) {
   }
 
   await appendLog(project, hasImprovement ? "Codex CLIで改良指示を反映します。" : "Codex CLIでアプリ作成指示を反映します。");
+  await appendLog(project, "codex execを起動しました。ファイル差分を作成しています。");
   const prompt = await fsp.readFile(path.join(appDir, "prompt.md"), "utf8");
   const codexArgs = [
     "exec",
@@ -1891,11 +1892,19 @@ async function runCodexIfAvailable(project, appDir) {
 
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString("utf8").trim();
-      if (text) appendLog(project, `codex: ${text.slice(0, 1000)}`);
+      if (text) {
+        text.split(/\r?\n/).filter(Boolean).slice(0, 8).forEach((line) => {
+          appendLog(project, `codex: ${line.slice(0, 1000)}`);
+        });
+      }
     });
     child.stderr.on("data", (chunk) => {
       const text = chunk.toString("utf8").trim();
-      if (text) appendLog(project, `codex err: ${text.slice(0, 1000)}`);
+      if (text) {
+        text.split(/\r?\n/).filter(Boolean).slice(0, 8).forEach((line) => {
+          appendLog(project, `codex err: ${line.slice(0, 1000)}`);
+        });
+      }
     });
     child.on("close", (code) => {
       if (settled) return;
@@ -1918,10 +1927,14 @@ async function runProjectJob(projectId) {
 
   try {
     const hasImprovement = Array.isArray(project.improvementHistory) && project.improvementHistory.length > 0;
+    await appendLog(project, hasImprovement ? "改良プロンプトを受信しました。" : "作成プロンプトを受信しました。");
     await appendLog(project, hasImprovement ? "改良用のアプリを準備しています。" : "プロジェクトを作成しました。生成用テンプレートを準備しています。");
     const appDir = await writeGeneratedApp(project);
-    await appendLog(project, "アプリ画面の下地生成が完了しました。");
+    await appendLog(project, "index.html / app.css / app.js を生成しました。");
+    await appendLog(project, "AIに渡すプロンプトを組み立てました。");
     await runCodexIfAvailable(project, appDir);
+    project = await loadProject(projectId);
+    await appendLog(project, "生成ファイルを確認し、デモURLへ反映しています。");
     project = await loadProject(projectId);
     project.status = "ready";
     project.previewUrl = `/archive/${project.id}/`;

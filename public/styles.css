@@ -2026,6 +2026,53 @@ p {
   font-size: 13px;
 }
 
+.prompt-log:empty {
+  display: none;
+}
+
+.live-log {
+  border: 1px solid #c6d9ef;
+  border-radius: 8px;
+  background: #0f2136;
+  color: #eaf3ff;
+  margin: 12px 0 0;
+  overflow: hidden;
+}
+
+.live-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.live-log-head span {
+  font-weight: 900;
+}
+
+.live-log-head small {
+  color: #a9c8ed;
+  font-weight: 800;
+}
+
+.live-log ol {
+  margin: 0;
+  padding: 10px 12px 12px 30px;
+  max-height: 220px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.live-log li {
+  padding: 2px 0;
+  color: #eaf3ff;
+}
+
 .empty {
   border: 1px dashed #b9c5c2;
   border-radius: 8px;

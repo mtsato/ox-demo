@@ -1132,7 +1132,7 @@ async function submitProject(event) {
 function pollProject(id) {
   if (state.polling) clearInterval(state.polling);
   state.activeProjectId = id;
-  renderJobArea(null);
+  renderJobArea(null, id);
   state.polling = setInterval(async () => {
     try {
       const { project } = await api(`/api/projects/${id}`);
@@ -1156,11 +1156,28 @@ function pollProject(id) {
   }, 1200);
 }
 
-function renderJobArea(project) {
-  const area = document.getElementById("jobArea");
-  if (!area) return;
+function cleanBuildLogLine(line) {
+  const body = String(line || "")
+    .replace(/^\[[^\]]+\]\s*/, "")
+    .replace(/Codex CLI/g, "codex")
+    .trim();
+  const codexMatch = /^codex(?: err)?:\s*(.+)$/i.exec(body);
+  if (!codexMatch) return body;
+  const raw = codexMatch[1].trim();
+  try {
+    const parsed = JSON.parse(raw);
+    const message = parsed.message || parsed.msg || parsed.text || parsed.status || parsed.type;
+    if (message) return `codex: ${String(message).slice(0, 220)}`;
+    if (parsed.event) return `codex: ${String(parsed.event).slice(0, 220)}`;
+  } catch {
+    // Keep raw text when codex emits plain logs.
+  }
+  return `codex: ${raw.slice(0, 220)}`;
+}
+
+function buildStateHtml(project, projectId = "") {
   if (!project) {
-    area.innerHTML = html`
+    return html`
       <section class="build-state">
         <strong>AIがアプリを作成しています</strong>
         <div class="build-steps">
@@ -1168,17 +1185,25 @@ function renderJobArea(project) {
           <span>AI反映</span>
           <span>デモ更新</span>
         </div>
+        <div class="live-log">
+          <div class="live-log-head">
+            <span>AI実行ログ</span>
+            <small>リアルタイム更新</small>
+          </div>
+          <ol>
+            <li>プロンプトを受信しました。</li>
+            <li>作業環境を準備しています。</li>
+          </ol>
+        </div>
       </section>`;
-    return;
   }
   const lastLog = (project.logs || []).slice(-1)[0] || "";
   const cleanLog = lastLog
     .replace(/^\[[^\]]+\]\s*/, "")
-    .replace(/Codex CLI/g, "AI")
-    .replace(/Codex/g, "AI")
-    .replace(/codex/g, "ai");
-  const codexTouched = (project.logs || []).some((line) => line.includes("Codex CLI"));
-  area.innerHTML = html`
+    .replace(/Codex CLI/g, "codex");
+  const logs = (project.logs || []).slice(-12).map(cleanBuildLogLine).filter(Boolean);
+  const codexTouched = (project.logs || []).some((line) => /Codex CLI|codex:/i.test(line));
+  return html`
     <section class="build-state ${project.status}">
       <strong>${project.status === "ready" ? "アプリが完成しました" : project.status === "error" ? "作成に失敗しました" : "AIがアプリを作成しています"}</strong>
       <p>${project.status === "ready" ? "デモ画面を開いて、必要ならすぐ改良できます。" : project.status === "error" ? "入力を短くして再作成してください。" : "画面、処理、出力をアプリとして組み立てています。"}</p>
@@ -1188,8 +1213,28 @@ function renderJobArea(project) {
         <span class="${project.status === "ready" ? "active" : ""}">デモ更新</span>
       </div>
       ${cleanLog ? `<p class="build-log">${escapeHtml(cleanLog.slice(0, 160))}</p>` : ""}
+      <div class="live-log">
+        <div class="live-log-head">
+          <span>AI実行ログ</span>
+          <small>${project.status === "ready" ? "完了" : project.status === "error" ? "停止" : "リアルタイム更新"}</small>
+        </div>
+        <ol>
+          ${(logs.length ? logs : ["ログを取得しています。"]).map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
+        </ol>
+      </div>
       ${project.previewUrl ? `<a class="primary-link" href="${project.previewUrl}" target="_blank" rel="noreferrer">デモ画面を開く</a>` : ""}
     </section>`;
+}
+
+function renderJobArea(project, projectId = state.activeProjectId) {
+  const htmlText = buildStateHtml(project, projectId);
+  const areas = [
+    ...document.querySelectorAll("#jobArea"),
+    ...document.querySelectorAll(`[data-live-log="${project?.id || projectId}"]`)
+  ];
+  areas.forEach((area) => {
+    area.innerHTML = htmlText;
+  });
 }
 
 function renderArchive(container) {
@@ -1256,6 +1301,9 @@ function improvePanel(project) {
         <span>どう改良しますか</span>
         <textarea name="prompt" placeholder="${escapeHtml(placeholder)}"></textarea>
       </label>
+      <div class="prompt-log" data-live-log="${project.id}">
+        ${["queued", "generating"].includes(project.status) ? buildStateHtml(project, project.id) : ""}
+      </div>
       <div class="actions">
         <button type="submit">改良してデモを更新</button>
       </div>
@@ -1269,8 +1317,10 @@ async function submitImprovement(event) {
   const prompt = String(form.get("prompt") || "").trim();
   if (!prompt) return;
   const submit = event.currentTarget.querySelector("button[type='submit']");
+  const logArea = event.currentTarget.querySelector("[data-live-log]");
   submit.disabled = true;
   submit.textContent = "改良中...";
+  if (logArea) logArea.innerHTML = buildStateHtml(null, projectId);
   await api(`/api/projects/${projectId}/improve`, {
     method: "POST",
     body: JSON.stringify({
