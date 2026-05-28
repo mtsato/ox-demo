@@ -110,7 +110,8 @@ set +e
     HOME=/home/sato \
     CODEX_HOME="${codex_home}" \
     codex exec \
-      --sandbox workspace-write \
+      --sandbox danger-full-access \
+      --cd "${app_dir}" \
       --skip-git-repo-check \
       --json \
       --output-last-message "codex-summary.md" \

@@ -392,8 +392,21 @@ function defaultTitle(fields, chosen) {
 
 function generativeBlueprint(project) {
   const text = `${project.title} ${project.instruction} ${project.inputDescription} ${project.outputDescription}`;
-  if (/議事|会議|todo|ToDo/i.test(text)) {
+  if (/打合せ記録簿|打ち合わせ記録簿|打合せ記録|協議|指示事項|行政|発注者|議事録/i.test(text)) {
     return {
+      kind: "meeting_record",
+      name: "行政向け打合せ記録簿作成アプリ",
+      inputLabel: "議事録 / 会議メモ / 音声文字起こし",
+      sampleInput: "2026年5月26日 〇〇市河川監視AI打合せ。出席：〇〇市 河川課 山田様、応用地質 佐藤。協議：既設監視カメラ画像と水位CSVを使い、豪雨時の状況確認を省力化したい。指示事項：応用地質は次回までに利用可能なカメラ一覧、水位データ形式、速報文サンプルを整理する。自治体側は過去の出水時画像と水位履歴の提供可否を確認する。次回：6月上旬。",
+      outputs: ["協議事項", "指示事項", "回答・対応方針", "未確認事項", "打合せ記録簿ダウンロード"],
+      primaryOutput: "議事録から、行政提出向けに協議事項と指示事項を分けた打合せ記録簿を作成します。",
+      table: [["協議", "既設カメラと水位CSVを活用した監視省力化"], ["指示", "カメラ一覧・水位データ形式・速報文サンプルを整理"], ["次回", "6月上旬にデータ提供可否を確認"]],
+      downloadName: "打合せ記録簿.doc"
+    };
+  }
+  if (/会議|todo|ToDo/i.test(text)) {
+    return {
+      kind: "meeting_minutes",
       name: "議事録・ToDo整理アプリ",
       inputLabel: "会議メモ / 音声文字起こし",
       sampleInput: "5/26 支社AI活用会議。監視カメラAIは河川と斜面で優先。佐藤さんがデータ候補を来週金曜までに整理。山田さんが自治体向け速報文テンプレートを確認。",
@@ -404,6 +417,7 @@ function generativeBlueprint(project) {
   }
   if (/点検|写真|損傷|報告/i.test(text)) {
     return {
+      kind: "inspection_report",
       name: "点検報告書ドラフトアプリ",
       inputLabel: "点検写真メモ / ひび割れ所見",
       sampleInput: "橋梁床版下面。縦方向の細いひび割れあり。前回点検より延長がやや拡大。幅と位置を写真台帳化したい。",
@@ -414,6 +428,7 @@ function generativeBlueprint(project) {
   }
   if (/提案|PoC|顧客|相談/i.test(text)) {
     return {
+      kind: "proposal",
       name: "提案方針・PoC案作成アプリ",
       inputLabel: "顧客相談内容 / 課題メモ",
       sampleInput: "自治体から豪雨時の河川監視を省力化したい相談。既存カメラあり。水位CSVと雨量CSVは取得可能。速報文作成も効率化したい。",
@@ -423,6 +438,7 @@ function generativeBlueprint(project) {
     };
   }
   return {
+    kind: "workplan",
     name: "業務計画書ドラフト作成アプリ",
     inputLabel: "特記仕様書 / 過去計画書",
     sampleInput: "業務名：斜面監視調査。目的：降雨時の変状把握。条件：監視カメラ、雨量計、変位計を使用。成果：月報、速報、最終報告書。",
@@ -482,7 +498,8 @@ ${blueprint ? `- アプリ名: ${blueprint.name}
 - 入力欄: ${blueprint.inputLabel}
 - 代表入力: ${blueprint.sampleInput}
 - 出力ブロック: ${blueprint.outputs.join(" / ")}
-- 代表出力: ${blueprint.primaryOutput}` : `- 現場: ${profile?.location || "現場データ"}
+- 代表出力: ${blueprint.primaryOutput}
+${blueprint.kind === "meeting_record" ? "- 必須操作: 議事録ファイルをドラッグ&ドロップし、協議事項・指示事項を分けた打合せ記録簿を生成し、Wordで開けるファイルとしてダウンロードできるようにする。" : ""}` : `- 現場: ${profile?.location || "現場データ"}
 - 画像生成用プロンプト候補: ${profile?.imagePrompt || "現場監視画像"}
 - 表示するメトリクス: ${(profile?.metrics || []).map((item) => item.join(" ")).join(" / ")}
 - 時系列データ: ${(profile?.series || []).join(", ")}
@@ -504,6 +521,7 @@ ${improvementText || "なし"}
 - 改良時は既存の画面構成を大きく壊さず、レイアウト、文言、入力欄、結果カード、グラフ、判定根拠などを小さな単位で改善する。
 - 生成AI活用の場合は、ファイルを入力し、処理し、成果物を出力する流れを強調する。
 - 生成AI活用の場合は、推奨デモ設計に沿って、入力欄、実行ボタン、出力カード、表、確認事項、コピーしやすい文面を最初から配置する。
+- 打合せ記録簿アプリの場合は、ドラッグ&ドロップ、協議事項と指示事項の分離、行政提出向け文体、ダウンロードボタンを必ず入れる。
 - 特化型AIの場合は、最終的にエンドユーザーが使う監視・点検・予測画面として成立させる。
 - 画像系AIの場合は、地すべり・冠水域・ひび割れなどテーマごとの1ラベルだけを扱い、画像と検知結果の対応を崩さない。
 - 時系列AIの場合は、データセットと目的に合わせて、異常検知または推移予測が一目で分かる完成画面にする。
@@ -915,14 +933,22 @@ function generatedIndex(project) {
         </div>
       </div>
       <div class="generator-grid">
-        <label class="demo-input">
+        <section class="demo-input">
           <span>${escapeHtml(blueprint.inputLabel)}</span>
+          <label class="file-drop" id="fileDrop">
+            <input id="sourceFile" type="file" accept=".txt,.md,.csv,.log,.doc,.docx,.pdf">
+            <strong>議事録ファイルをドロップ</strong>
+            <small>テキスト化済み資料、議事メモ、文字起こしを取り込みます</small>
+          </label>
           <textarea id="demoPrompt">${escapeHtml(samplePreview || blueprint.sampleInput)}</textarea>
-        </label>
+        </section>
         <section class="demo-output">
           <div class="output-head">
             <span>AI出力</span>
-            <button id="runDemoBtn">生成する</button>
+            <div class="button-row">
+              <button id="runDemoBtn">生成する</button>
+              <button id="downloadDocBtn" class="secondary" type="button">${blueprint.kind === "meeting_record" ? "記録簿をダウンロード" : "成果物をダウンロード"}</button>
+            </div>
           </div>
           <div id="demoResult">
             <h3>${escapeHtml(project.title)}</h3>
@@ -1626,6 +1652,34 @@ button {
   display: grid;
   gap: 10px;
 }
+.file-drop {
+  display: grid;
+  place-items: center;
+  min-height: 122px;
+  border: 2px dashed #9fb9d7;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: var(--teal-dark);
+  text-align: center;
+  padding: 16px;
+  cursor: pointer;
+}
+.file-drop input {
+  display: none;
+}
+.file-drop strong,
+.file-drop small {
+  display: block;
+}
+.file-drop small {
+  color: var(--muted);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+.file-drop.dragover {
+  border-color: var(--teal);
+  background: var(--soft);
+}
 .demo-input textarea {
   width: 100%;
   min-height: 260px;
@@ -1636,6 +1690,33 @@ button {
 }
 .demo-output {
   min-height: 260px;
+}
+.button-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.secondary {
+  background: #ffffff;
+  color: var(--teal-dark);
+  border: 1px solid var(--line);
+}
+.record-sheet {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+}
+.record-sheet h4 {
+  margin: 16px 0 8px;
+  color: var(--teal-dark);
+}
+.record-sheet ol {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--muted);
+  line-height: 1.7;
 }
 .draft-text {
   border-left: 4px solid var(--teal);
@@ -1741,6 +1822,8 @@ const profileMetrics = ${JSON.stringify(profile.metrics)};
 const imageStates = ${JSON.stringify(frameStates)};
 const baseSeries = ${JSON.stringify(profile.series)};
 const threshold = ${JSON.stringify(profile.threshold)};
+const blueprintKind = ${JSON.stringify(blueprint.kind)};
+const downloadName = ${JSON.stringify(blueprint.downloadName || `${project.title}.doc`)};
 const generativePrimary = ${JSON.stringify(blueprint.primaryOutput)};
 const generativeOutputs = ${JSON.stringify(blueprint.outputs)};
 const generativeTable = ${JSON.stringify(blueprint.table)};
@@ -1876,18 +1959,107 @@ if (isSpecialized) {
   setInterval(updateSpecialized, 3800);
 }
 
+function splitItems(text, words, fallback) {
+  const lines = String(text || "")
+    .split(/[\\n。]/)
+    .map((line) => line.replace(/^[-・\\s]+/, "").trim())
+    .filter(Boolean);
+  const matched = lines.filter((line) => words.some((word) => line.includes(word)));
+  return (matched.length ? matched : fallback).slice(0, 5);
+}
+
+function buildMeetingRecord(text) {
+  const source = String(text || "").trim() || "議事録が未入力です。";
+  const date = source.match(/20\\d{2}[年\\/.-]\\d{1,2}[月\\/.-]\\d{1,2}日?/)?.[0] || "記録日を確認";
+  const attendees = source.match(/出席[:：]([^。\\n]+)/)?.[1]?.trim() || "出席者を確認";
+  const topic = source.match(/(?:協議|議題|目的)[:：]([^。\\n]+)/)?.[1]?.trim() || source.slice(0, 42);
+  const discussions = splitItems(source, ["協議", "相談", "確認", "課題", "目的"], ["既存資料と現地条件を確認し、対応方針を協議した。"]);
+  const instructions = splitItems(source, ["指示", "依頼", "提出", "整理", "確認する", "まで"], ["受注者は次回までに資料を整理し、発注者へ確認する。"]);
+  const openItems = splitItems(source, ["未確認", "可否", "不足", "次回", "提供"], ["不足資料と提供可否を次回打合せまでに確認する。"]);
+  const rows = [
+    ["打合せ日", date],
+    ["件名", projectTitle],
+    ["出席者", attendees],
+    ["主題", topic]
+  ].map((row) => "<tr><td>" + escapeHtml(row[0]) + "</td><td>" + escapeHtml(row[1]) + "</td></tr>").join("");
+  const list = (items) => "<ol>" + items.map((item) => "<li>" + escapeHtml(item) + "</li>").join("") + "</ol>";
+  return "<div class='record-sheet' id='recordSheet'><h3>打合せ記録簿</h3><table><tbody>" + rows + "</tbody></table><h4>協議事項</h4>" + list(discussions) + "<h4>指示事項</h4>" + list(instructions) + "<h4>回答・対応方針</h4><p>受注者は指示事項を整理し、根拠資料とあわせて次回打合せで報告する。</p><h4>未確認事項</h4>" + list(openItems) + "</div>";
+}
+
+function buildGenericOutput(text) {
+  const cards = generativeOutputs.map((item) => "<span>" + escapeHtml(item) + "</span>").join("");
+  const rows = generativeTable.map((row) => "<tr>" + row.map((cell) => "<td>" + escapeHtml(cell) + "</td>").join("") + "</tr>").join("");
+  return "<h3>" + escapeHtml(projectTitle) + "</h3><p class='draft-text'>" + escapeHtml(generativePrimary) + "</p><p>入力要約: " + escapeHtml(String(text || "").slice(0, 90) || "入力資料") + "</p><div class='output-cards'>" + cards + "</div><table><tbody>" + rows + "</tbody></table>";
+}
+
+function renderGenerative() {
+  const result = document.getElementById("demoResult");
+  if (!result) return;
+  const prompt = document.getElementById("demoPrompt")?.value || "";
+  const html = blueprintKind === "meeting_record" ? buildMeetingRecord(prompt) : buildGenericOutput(prompt);
+  result.innerHTML = html + (latestImprovement ? "<p class='improvement-note'>改良反映: " + escapeHtml(latestImprovement) + "</p>" : "");
+}
+
+function downloadDoc() {
+  const result = document.getElementById("demoResult");
+  if (!result) return;
+  const doc = "<!doctype html><html><head><meta charset='utf-8'><title>" + escapeHtml(projectTitle) + "</title></head><body>" + result.innerHTML + "</body></html>";
+  const blob = new Blob([doc], { type: "application/msword;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = downloadName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function loadFile(file) {
+  if (!file) return;
+  const drop = document.getElementById("fileDrop");
+  if (drop) drop.querySelector("small").textContent = file.name + " を読み込みました";
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = String(reader.result || "").replace(/\\u0000/g, "").trim();
+    const textarea = document.getElementById("demoPrompt");
+    if (textarea && text.length > 20) textarea.value = text.slice(0, 12000);
+    else if (textarea) textarea.value = textarea.value + "\\n\\n添付ファイル: " + file.name;
+    renderGenerative();
+  };
+  reader.readAsText(file);
+}
+
 document.getElementById("runDemoBtn")?.addEventListener("click", () => {
   if (isSpecialized) {
     updateSpecialized();
     return;
   }
-  const result = document.getElementById("demoResult");
-  if (!result) return;
-  const prompt = document.getElementById("demoPrompt")?.value || "";
-  const cards = generativeOutputs.map((item) => "<span>" + escapeHtml(item) + "</span>").join("");
-  const rows = generativeTable.map((row) => "<tr>" + row.map((cell) => "<td>" + escapeHtml(cell) + "</td>").join("") + "</tr>").join("");
-  result.innerHTML = "<h3>" + escapeHtml(projectTitle) + "</h3><p class='draft-text'>" + escapeHtml(generativePrimary) + "</p><p>入力要約: " + escapeHtml(prompt.slice(0, 90) || "入力資料") + "</p><div class='output-cards'>" + cards + "</div><table><tbody>" + rows + "</tbody></table>" + (latestImprovement ? "<p class='improvement-note'>改良反映: " + escapeHtml(latestImprovement) + "</p>" : "");
-});`;
+  renderGenerative();
+});
+
+document.getElementById("downloadDocBtn")?.addEventListener("click", () => {
+  if (!isSpecialized) {
+    renderGenerative();
+    downloadDoc();
+  }
+});
+
+const sourceFile = document.getElementById("sourceFile");
+sourceFile?.addEventListener("change", (event) => loadFile(event.target.files?.[0]));
+const fileDrop = document.getElementById("fileDrop");
+fileDrop?.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  fileDrop.classList.add("dragover");
+});
+fileDrop?.addEventListener("dragleave", () => fileDrop.classList.remove("dragover"));
+fileDrop?.addEventListener("drop", (event) => {
+  event.preventDefault();
+  fileDrop.classList.remove("dragover");
+  loadFile(event.dataTransfer.files?.[0]);
+});
+
+if (!isSpecialized) renderGenerative();`;
 }
 
 async function writeGeneratedApp(project) {
