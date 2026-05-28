@@ -32,10 +32,18 @@ remove_container() {
   echo "Removing container: ${name}"
   docker update --restart=no "${name}" >/dev/null 2>&1 || true
   docker unpause "${name}" >/dev/null 2>&1 || true
-  docker stop -t 2 "${name}" >/dev/null 2>&1 || true
+
+  local pid
+  pid="$(docker inspect "${name}" --format '{{.State.Pid}}' 2>/dev/null || true)"
+  if [[ "${pid}" =~ ^[0-9]+$ ]] && [[ "${pid}" -gt 1 ]]; then
+    kill -TERM "${pid}" 2>/dev/null || true
+    sleep 1
+    kill -KILL "${pid}" 2>/dev/null || true
+  fi
+
+  docker stop -t 1 "${name}" >/dev/null 2>&1 || true
 
   if ! docker rm -f "${name}"; then
-    local pid
     pid="$(docker inspect "${name}" --format '{{.State.Pid}}' 2>/dev/null || true)"
     if [[ "${pid}" =~ ^[0-9]+$ ]] && [[ "${pid}" -gt 1 ]]; then
       echo "Docker could not kill ${name}; trying direct PID stop: ${pid}"
