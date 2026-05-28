@@ -8,16 +8,13 @@ RESULT_DIR="${DATA_DIR}/codex-results"
 LOG_DIR="${DATA_DIR}/codex-logs"
 RUN_DIR="${DATA_DIR}/codex-runs"
 CODEX_SOURCE_HOME="/home/sato/.codex"
-IMAGE="ox-ai-workshop-builder:local"
-LOCK_FILE="/tmp/ox-ai-workshop-codex-worker.lock"
+LOCK_FILE="${RUN_DIR}/codex-worker.lock"
 
-if [[ "${EUID}" -ne 0 ]]; then
-  echo "sudo ${0}"
-  exit 1
+if [[ "${EUID}" -eq 0 ]]; then
+  exec sudo -u sato env HOME=/home/sato OX_CODEX_WORKER_TIMEOUT_SECONDS="${OX_CODEX_WORKER_TIMEOUT_SECONDS:-180}" "$0" "$@"
 fi
 
 mkdir -p "${REQUEST_DIR}" "${RESULT_DIR}" "${LOG_DIR}" "${RUN_DIR}"
-chown -R sato:sato "${DATA_DIR}"
 
 json_escape() {
   local value="${1:-}"
@@ -42,14 +39,12 @@ write_result() {
 }
 EOF
   mv "${result_file}.tmp" "${result_file}"
-  chown sato:sato "${result_file}"
 }
 
 append_log() {
   local log_file="$1"
   local line="$2"
   printf '[%s] codex: %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")" "${line}" >> "${log_file}"
-  chown sato:sato "${log_file}" 2>/dev/null || true
 }
 
 exec 9>"${LOCK_FILE}"
@@ -100,25 +95,28 @@ if [[ ! -d "${app_dir}" || ! -f "${prompt_file}" ]]; then
   exit 0
 fi
 
-container_name="ox-codex-job-${project_id:0:24}"
-raw_log="${RUN_DIR}/${project_id}.raw.log"
-rm -f "${raw_log}"
-docker rm -f "${container_name}" >/dev/null 2>&1 || true
+if ! command -v codex >/dev/null 2>&1; then
+  append_log "${log_file}" '{"type":"item.completed","item":{"type":"agent_message","text":"mt2ホストに開発AIコマンドが見つかりません。ローカル生成結果を表示します。"}}'
+  write_result "${result_file}" "false" "127" "codex command was not found on mt2 host"
+  rm -f "${request}.running"
+  rm -rf "${codex_home}"
+  exit 0
+fi
+
 set +e
-timeout "${OX_CODEX_WORKER_TIMEOUT_SECONDS:-180}s" docker run --rm \
-  --name "${container_name}" \
-  --security-opt seccomp=unconfined \
-  --security-opt apparmor=unconfined \
-  --cap-add SYS_ADMIN \
-  --cap-add NET_ADMIN \
-  -v "${app_dir}:/workspace" \
-  -v "${codex_home}:/root/.codex" \
-  "${IMAGE}" \
-  sh -lc 'cd /workspace && codex exec --sandbox workspace-write --skip-git-repo-check --json --output-last-message /workspace/codex-summary.md - < /workspace/prompt.md' \
+timeout "${OX_CODEX_WORKER_TIMEOUT_SECONDS:-180}s" env \
+  HOME=/home/sato \
+  CODEX_HOME="${codex_home}" \
+  codex exec \
+    --sandbox workspace-write \
+    --skip-git-repo-check \
+    --json \
+    --output-last-message "${app_dir}/codex-summary.md" \
+    - \
+  < "${prompt_file}" \
   > >(while IFS= read -r line; do append_log "${log_file}" "${line}"; done) \
   2> >(while IFS= read -r line; do append_log "${log_file}" "${line}"; done)
 status=$?
-docker rm -f "${container_name}" >/dev/null 2>&1 || true
 set -e
 
 if [[ "${status}" -eq 0 ]]; then

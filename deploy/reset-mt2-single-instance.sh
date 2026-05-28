@@ -82,6 +82,8 @@ done
 docker network inspect "${NETWORK}" >/dev/null 2>&1 || docker network create "${NETWORK}"
 mkdir -p "${DATA_DIR}"
 chown -R sato:sato "${DATA_DIR}"
+SATO_UID="$(id -u sato)"
+SATO_GID="$(id -g sato)"
 
 ENV_ARGS=()
 if [[ -f "${ENV_FILE}" ]]; then
@@ -92,9 +94,10 @@ docker run -d \
   --name "${APP_CONTAINER}" \
   --restart unless-stopped \
   --network "${NETWORK}" \
+  --user "${SATO_UID}:${SATO_GID}" \
   "${ENV_ARGS[@]}" \
   -v "${DATA_DIR}:/app/data" \
-  -e HOME=/root \
+  -e HOME=/tmp \
   -e OX_LOGIN_ID=oyo \
   -e OX_LOGIN_PASS=oxai \
   -e OX_CODEX_ENABLED=1 \

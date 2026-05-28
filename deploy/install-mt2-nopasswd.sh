@@ -76,6 +76,8 @@ Description=OX AI Workshop Builder Codex worker
 
 [Service]
 Type=oneshot
+User=sato
+Environment=HOME=/home/sato
 ExecStart=${CODEX_WORKER_TARGET}
 EOF
 
@@ -102,7 +104,6 @@ systemctl enable --now ox-ai-workshop-codex-worker.timer >/dev/null
   printf '%s\n' 'sato ALL=(root) NOPASSWD: /usr/local/sbin/ox-ai-workshop-reset'
   printf '%s\n' 'sato ALL=(root) NOPASSWD: /usr/local/sbin/ox-ai-workshop-status'
   printf '%s\n' 'sato ALL=(root) NOPASSWD: /usr/local/sbin/ox-ai-workshop-deploy-once'
-  printf '%s\n' 'sato ALL=(root) NOPASSWD: /usr/local/sbin/ox-ai-workshop-codex-worker-once'
 } > "${SUDOERS}"
 chmod 0440 "${SUDOERS}"
 visudo -cf "${SUDOERS}"
@@ -119,4 +120,3 @@ echo "NOPASSWD: sudo -n ${INSTALL_TARGET}"
 echo "NOPASSWD: sudo -n ${TARGET}"
 echo "NOPASSWD: sudo -n ${STATUS_TARGET}"
 echo "NOPASSWD: sudo -n ${DEPLOY_TARGET}"
-echo "NOPASSWD: sudo -n ${CODEX_WORKER_TARGET}"
