@@ -10,6 +10,7 @@ let state = {
   selectedTemplates: new Set(["slope-monitoring"]),
   consultType: "specialized",
   consultScenario: "river-intrusion",
+  consultText: "",
   activeProjectId: null,
   keepImproveOpen: false,
   improveTarget: "screen",
@@ -19,6 +20,7 @@ let state = {
   annotationAccepted: {},
   maskAdjustment: {},
   sampleFrame: {},
+  stagedFiles: [],
   tsDataset: "slope",
   tsGoal: "forecast",
   tsThreshold: 72,
@@ -386,17 +388,32 @@ function renderBuilder(container) {
   document.querySelectorAll("[data-annotation-undo]").forEach((button) => {
     button.addEventListener("click", () => {
       const templateId = button.dataset.annotationUndo;
-      const boxes = state.annotationBoxes[templateId] || [];
-      state.annotationBoxes[templateId] = boxes.slice(0, -1);
+      const frameIndex = Number(button.dataset.annotationFrame || 0);
+      const key = annotationKey(templateId, frameIndex);
+      const boxes = state.annotationBoxes[key] || [];
+      state.annotationBoxes[key] = boxes.slice(0, -1);
+      state.annotationAccepted[key] = state.annotationBoxes[key].length > 0;
       renderApp();
     });
   });
   document.querySelectorAll("[data-annotation-clear]").forEach((button) => {
     button.addEventListener("click", () => {
       const templateId = button.dataset.annotationClear;
-      state.annotationBoxes[templateId] = [];
-      state.annotationAccepted[templateId] = false;
-      state.maskAdjustment[templateId] = 0;
+      const frameIndex = Number(button.dataset.annotationFrame || 0);
+      const key = annotationKey(templateId, frameIndex);
+      state.annotationBoxes[key] = [];
+      state.annotationAccepted[key] = false;
+      state.maskAdjustment[key] = 0;
+      renderApp();
+    });
+  });
+  document.querySelectorAll("[data-suggest-mask]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const templateId = button.dataset.suggestMask;
+      const frameIndex = Number(button.dataset.annotationFrame || 0);
+      const key = annotationKey(templateId, frameIndex);
+      state.annotationBoxes[key] = assistedMaskStrokes(templateId, frameIndex);
+      state.annotationAccepted[key] = true;
       renderApp();
     });
   });
@@ -433,6 +450,7 @@ function renderBuilder(container) {
       state.consultType = button.dataset.consultType;
       const next = consultationScenarios.find((item) => item.type === state.consultType);
       if (next) state.consultScenario = next.id;
+      if (next) state.consultText = next.prompt;
       renderApp();
     });
   });
@@ -442,14 +460,23 @@ function renderBuilder(container) {
       if (!scenario) return;
       state.consultScenario = scenario.id;
       state.consultType = scenario.type;
+      state.consultText = scenario.prompt;
       renderApp();
+    });
+  });
+  document.querySelectorAll("[data-consultation-input]").forEach((textarea) => {
+    textarea.addEventListener("input", () => {
+      state.consultText = textarea.value;
+      const plan = inferConsultPlan(state.consultText, state.consultType, currentConsultScenario());
+      const target = document.getElementById("consultPlan");
+      if (target) target.innerHTML = consultationPlanHtml(plan);
     });
   });
   document.querySelectorAll(".drop-zone").forEach((zone) => {
     const input = zone.querySelector("input[type='file']");
     const label = zone.querySelector("[data-file-label]");
     const updateLabel = () => {
-      const count = input?.files?.length || 0;
+      const count = input?.files?.length || state.stagedFiles.length || 0;
       if (label) label.textContent = count ? `${count}件のファイルを追加済み` : "ここにドラッグ、またはクリックして選択";
     };
     zone.addEventListener("dragover", (event) => {
@@ -462,10 +489,15 @@ function renderBuilder(container) {
       zone.classList.remove("dragging");
       if (input && event.dataTransfer?.files?.length) {
         input.files = event.dataTransfer.files;
+        state.stagedFiles = Array.from(event.dataTransfer.files);
         updateLabel();
       }
     });
-    input?.addEventListener("change", updateLabel);
+    input?.addEventListener("change", () => {
+      state.stagedFiles = Array.from(input.files || []);
+      updateLabel();
+    });
+    updateLabel();
   });
   document.getElementById("projectForm").addEventListener("submit", submitProject);
 }
@@ -474,6 +506,7 @@ function wireAnnotationCanvas() {
   const canvas = document.querySelector("[data-annotation-canvas]");
   if (!canvas) return;
   const templateId = canvas.dataset.annotationCanvas;
+  const frameIndex = Number(canvas.dataset.annotationFrame || 0);
   const areaMode = templateId !== "inspection-damage";
   let stroke = null;
   let draftPath = null;
@@ -528,8 +561,10 @@ function wireAnnotationCanvas() {
     if (!stroke) return;
     appendPoint(toPoint(event));
     stroke.closed = areaMode && stroke.points.length > 3;
-    const boxes = state.annotationBoxes[templateId] || [];
-    state.annotationBoxes[templateId] = boxes.concat(stroke).slice(-8);
+    const key = annotationKey(templateId, frameIndex);
+    const boxes = state.annotationBoxes[key] || [];
+    state.annotationBoxes[key] = boxes.concat(stroke).slice(-8);
+    state.annotationAccepted[key] = true;
     stroke = null;
     renderApp();
   });
@@ -540,11 +575,67 @@ function wireAnnotationCanvas() {
 }
 
 function annotationBox(templateId) {
-  return (state.annotationBoxes[templateId] || [])[0] || null;
+  return (annotationBoxes(templateId) || [])[0] || null;
 }
 
-function annotationBoxes(templateId) {
-  return state.annotationBoxes[templateId] || [];
+function annotationKey(templateId, frameIndex) {
+  return `${templateId}:${Number(frameIndex) || 0}`;
+}
+
+function annotationTeacherFrames(templateId) {
+  if (templateId === "inspection-damage") return [1, 3, 5];
+  if (templateId === "slope-monitoring") return [2, 3, 5];
+  if (templateId === "river-monitoring") return [2, 3, 5];
+  return [0];
+}
+
+function annotationBoxes(templateId, frameIndex) {
+  if (Number.isFinite(frameIndex)) {
+    return state.annotationBoxes[annotationKey(templateId, frameIndex)] || [];
+  }
+  const prefix = `${templateId}:`;
+  const grouped = Object.entries(state.annotationBoxes)
+    .filter(([key]) => key.startsWith(prefix))
+    .flatMap(([, value]) => value || []);
+  return grouped.length ? grouped : state.annotationBoxes[templateId] || [];
+}
+
+function annotatedFrameCount(templateId) {
+  return annotationTeacherFrames(templateId)
+    .filter((frameIndex) => annotationBoxes(templateId, frameIndex).length > 0)
+    .length;
+}
+
+function requiredAnnotationCount(templateId) {
+  return imageTemplate(templateId) ? 2 : 0;
+}
+
+function assistedMaskStrokes(templateId, frameIndex) {
+  return segmentationPaths(templateId, frameIndex).map((item) => ({
+    type: item.kind === "line" ? "line" : "area",
+    d: item.d,
+    width: templateId === "inspection-damage" ? 9 : 28,
+    closed: item.kind !== "line",
+    assisted: true
+  }));
+}
+
+function specializedAnnotationSummary(templateId) {
+  if (!imageTemplate(templateId)) {
+    const decision = timeSeriesDecision();
+    return [
+      `データセット: ${state.tsDataset}`,
+      `目的: ${state.tsGoal === "anomaly" ? "異常検知" : "推移予測"}`,
+      `警戒ライン: ${decision.threshold.toFixed(2)}`,
+      `現在判定: ${decision.risk}`
+    ].join("\n");
+  }
+  const frames = annotationTeacherFrames(templateId);
+  return frames.map((frameIndex) => {
+    const count = annotationBoxes(templateId, frameIndex).length;
+    const frame = imageFrameData(templateId, frameIndex);
+    return `${frame?.label || `サンプル${frameIndex + 1}`}: ${count ? "アノテーション済み" : "未作成"}`;
+  }).join("\n");
 }
 
 function brushWidthForSvg(width) {
@@ -574,7 +665,7 @@ function annotationPathFromLegacyRect(rect) {
 function annotationMaskMarkup(strokes, label) {
   if (!strokes.length) return "";
   const masks = strokes.map((stroke, index) => {
-    const d = stroke.points ? pathFromPoints(stroke.points, !!stroke.closed) : annotationPathFromLegacyRect(stroke);
+    const d = stroke.d || (stroke.points ? pathFromPoints(stroke.points, !!stroke.closed) : annotationPathFromLegacyRect(stroke));
     const width = brushWidthForSvg(stroke.width);
     return `
       <path class="${stroke.closed ? "annotation-area-fill" : "annotation-ai-fill"}" d="${d}" stroke-width="${(width + 2).toFixed(1)}"></path>
@@ -858,17 +949,15 @@ function specializedForm() {
         <p class="eyebrow">追加要望</p>
         <h2>要望を足す</h2>
       </div>
+      <label class="drop-zone compact-drop">
+        <input type="file" name="files" multiple accept=".jpg,.jpeg,.png,.csv,.txt,.pdf">
+        <strong data-file-label>${state.stagedFiles.length ? `${state.stagedFiles.length}件のファイルを追加済み` : "参考画像・CSVを追加"}</strong>
+        <span>手元データがない場合はデフォルトデータで進みます</span>
+      </label>
       <label class="field">
         <span>追加したい画面・機能</span>
         <textarea name="instruction" placeholder="例：警戒レベルの根拠、担当者メモ、自治体向け速報文を入れたい。"></textarea>
       </label>
-      <details class="file-details">
-        <summary>手元データも追加する</summary>
-        <label class="field">
-          <span>画像・CSV・PDFなど</span>
-          <input type="file" name="files" multiple>
-        </label>
-      </details>
     </section>`;
 }
 
@@ -921,15 +1010,23 @@ function specializedExperience(template) {
   };
   const isTraining = demo.mode === "training";
   const teachLabel = isTraining ? "正解確認" : "正解付け";
-  const boxes = annotationBoxes(template.id);
-  const stats = annotationStats(template.id);
   const decision = timeSeriesDecision();
   const hasImages = imageTemplate(template.id);
   const step = Math.max(1, Math.min(4, state.specializedStep || 1));
+  const teacherFrames = annotationTeacherFrames(template.id);
+  const rawFrameIndex = Number.isFinite(state.sampleFrame[template.id])
+    ? state.sampleFrame[template.id]
+    : annotationFrameIndex(template.id, step);
+  const activeAnnotationFrame = teacherFrames.includes(rawFrameIndex) ? rawFrameIndex : teacherFrames[0];
   const displayFrameIndex = hasImages
-    ? (Number.isFinite(state.sampleFrame[template.id]) ? state.sampleFrame[template.id] : annotationFrameIndex(template.id, step))
+    ? (step === 2 ? activeAnnotationFrame : rawFrameIndex)
     : 0;
   const frameData = hasImages ? imageFrameData(template.id, displayFrameIndex) : null;
+  const boxes = annotationBoxes(template.id, activeAnnotationFrame);
+  const stats = annotationStats(template.id);
+  const annotatedCount = annotatedFrameCount(template.id);
+  const requiredCount = requiredAnnotationCount(template.id);
+  const canTrain = isTraining || annotatedCount >= requiredCount;
   const targetFrameIndex = imageTemplate(template.id) ? 5 : 0;
   const annotationLabel = {
     "slope-monitoring": "地すべり",
@@ -938,14 +1035,15 @@ function specializedExperience(template) {
   }[template.id] || "対象範囲";
   const flowGuide = isTraining
     ? "データと目的を選び、現在値を判定・予測する画面にします。"
-    : "対象を1つだけ塗り、検知モデルを完成画面に組み込みます。";
+    : "参考画像に対象を塗り、検知モデルを完成画面に組み込みます。";
   const ux = templateUx(template.id);
   const flow = isTraining
     ? [["データ選択", "選ぶ"], ["目的確認", "見る"], ["AI学習", "学習"], ["完成画面", "生成"]]
-    : [["データ確認", "見る"], [teachLabel, "塗る"], ["AI学習", "精度を見る"], ["完成画面", "生成する"]];
+    : [["画像セット", "見る"], [teachLabel, "塗る"], ["AI学習", "精度を見る"], ["完成画面", "生成する"]];
   const flowCards = flow.map(([title, text], index) => {
     const number = index + 1;
-    return `<button type="button" data-flow-step="${number}" class="${number === step ? "current" : number < step ? "done" : ""}">
+    const locked = !isTraining && number > 2 && !canTrain;
+    return `<button type="button" data-flow-step="${number}" class="${number === step ? "current" : number < step ? "done" : ""}" ${locked ? "disabled" : ""}>
       <span>${number}</span><strong>${title}</strong><small>${text}</small>
     </button>`;
   }).join("");
@@ -953,6 +1051,15 @@ function specializedExperience(template) {
     <button type="button" data-sample-template="${escapeHtml(template.id)}" data-sample-frame="${index}" class="sample-thumb ${escapeHtml(template.id)} sample-${index + 1} ${index === displayFrameIndex ? "active" : ""}" ${hasImages ? `style="background-image:linear-gradient(180deg,rgba(16,32,51,0.02),rgba(16,32,51,0.46)),url('${monitoringImage(template.id, index)}')"` : ""}>
       <span>${escapeHtml(item)}</span>
     </button>`).join("");
+  const teacherThumbs = teacherFrames.map((frameIndex, index) => {
+    const done = annotationBoxes(template.id, frameIndex).length > 0;
+    const frame = imageFrameData(template.id, frameIndex);
+    return `
+      <button type="button" data-sample-template="${escapeHtml(template.id)}" data-sample-frame="${frameIndex}" class="teacher-thumb ${frameIndex === activeAnnotationFrame ? "active" : ""} ${done ? "done" : ""}" style="background-image:linear-gradient(180deg,rgba(16,32,51,0.02),rgba(16,32,51,0.50)),url('${monitoringImage(template.id, frameIndex)}')">
+        <span>${escapeHtml(frame?.label || `教師${index + 1}`)}</span>
+        <strong>${done ? "作成済み" : "未作成"}</strong>
+      </button>`;
+  }).join("");
   const maskMarkup = annotationMaskMarkup(boxes, annotationLabel);
   const accepted = boxes.length > 0;
   const tsDatasets = [
@@ -1057,7 +1164,8 @@ function specializedExperience(template) {
     </div>` : `
     <div class="flow-stage">
       <div class="annotation-workbench">
-        <div class="stage-visual ${escapeHtml(template.id)} annotation-canvas real-frame ${accepted ? "accepted" : ""}" data-annotation-canvas="${escapeHtml(template.id)}" style="background-image:linear-gradient(180deg,rgba(7,24,44,0.02),rgba(7,24,44,0.14)),url('${monitoringImage(template.id, displayFrameIndex || targetFrameIndex)}')">
+        <div class="teacher-thumb-grid">${teacherThumbs}</div>
+        <div class="stage-visual ${escapeHtml(template.id)} annotation-canvas real-frame ${accepted ? "accepted" : ""}" data-annotation-canvas="${escapeHtml(template.id)}" data-annotation-frame="${activeAnnotationFrame}" style="background-image:linear-gradient(180deg,rgba(7,24,44,0.02),rgba(7,24,44,0.14)),url('${monitoringImage(template.id, activeAnnotationFrame)}')">
           ${maskMarkup}
           <div class="annotation-hint">${accepted ? "教師データ作成済み" : escapeHtml(ux.annotationAction)}</div>
         </div>
@@ -1066,22 +1174,24 @@ function specializedExperience(template) {
             <span>塗り幅</span>
             <input data-annotation-brush="${escapeHtml(template.id)}" type="range" min="4" max="44" value="${state.annotationBrush}">
           </label>
-          <button type="button" data-annotation-undo="${escapeHtml(template.id)}" ${boxes.length ? "" : "disabled"}>戻す</button>
-          <button type="button" data-annotation-clear="${escapeHtml(template.id)}" ${boxes.length ? "" : "disabled"}>消す</button>
+          <button type="button" data-suggest-mask="${escapeHtml(template.id)}" data-annotation-frame="${activeAnnotationFrame}">対象を自動で塗る</button>
+          <button type="button" data-annotation-undo="${escapeHtml(template.id)}" data-annotation-frame="${activeAnnotationFrame}" ${boxes.length ? "" : "disabled"}>戻す</button>
+          <button type="button" data-annotation-clear="${escapeHtml(template.id)}" data-annotation-frame="${activeAnnotationFrame}" ${boxes.length ? "" : "disabled"}>消す</button>
         </div>
       </div>
       <aside class="stage-side">
         <h3>${escapeHtml(annotationLabel)}</h3>
         <div class="annotation-status ${accepted ? "done" : ""}">
-          <strong>${accepted ? "教師データを作成済み" : escapeHtml(ux.annotationAction)}</strong>
+          <strong>${annotatedCount}/${requiredCount} サンプル作成</strong>
           <span>${escapeHtml(ux.annotationHelp)}</span>
         </div>
         <div class="seg-stats simple">
           <div><span>ラベル</span><strong>1</strong></div>
           <div><span>対象</span><strong>${escapeHtml(annotationLabel)}</strong></div>
-          <div><span>学習</span><strong>${accepted ? "OK" : "未"}</strong></div>
+          <div><span>学習</span><strong>${canTrain ? "OK" : "未"}</strong></div>
         </div>
-        <button type="button" data-advance-flow ${accepted ? "" : "disabled"}>学習へ進む</button>
+        <p class="side-note">2枚以上に塗ると、AIが似た範囲を他の画像にも推論します。</p>
+        <button type="button" data-advance-flow ${canTrain ? "" : "disabled"}>学習へ進む</button>
       </aside>
     </div>`;
   const trainingPanel = `
@@ -1091,6 +1201,13 @@ function specializedExperience(template) {
         <div class="train-loader" aria-hidden="true">
           <span></span><span></span><span></span><span></span>
         </div>
+        ${hasImages ? `<div class="train-review-grid">
+          ${teacherFrames.map((frameIndex) => `
+            <div class="train-review-frame" style="background-image:linear-gradient(180deg,rgba(7,24,44,0.02),rgba(7,24,44,0.14)),url('${monitoringImage(template.id, frameIndex)}')">
+              ${segmentationPreviewMarkup(template.id, frameIndex, "assist")}
+            </div>
+          `).join("")}
+        </div>` : ""}
         <div class="train-pipeline">
           <span class="done">教師データ</span>
           <span class="active">学習中</span>
@@ -1202,6 +1319,67 @@ function currentConsultScenario() {
     || consultationScenarios[0];
 }
 
+function consultText() {
+  return state.consultText || currentConsultScenario().prompt;
+}
+
+function inferConsultPlan(text, preferredType = state.consultType, scenario = currentConsultScenario()) {
+  const raw = String(text || "").trim();
+  const normalized = raw || scenario.prompt;
+  const isDocument = /議事|打合せ|打ち合わせ|記録簿|報告書|計画書|仕様書|提案|メール|要約|文章|文書|契約|照査|台帳|ダウンロード/i.test(normalized);
+  const isTimeSeries = /水位|雨量|流量|地下水|変位|傾斜|センサー|計測|時系列|予測|forecast|異常|アラート|洪水|越水/i.test(normalized);
+  const isImage = /画像|カメラ|CCTV|動画|写真|ドローン|ひび|亀裂|浸水|冠水|侵入|人物|人|地すべり|斜面|崩壊|検知/i.test(normalized);
+  const type = isDocument && !isImage && !isTimeSeries
+    ? "generative"
+    : isImage || isTimeSeries
+      ? "specialized"
+      : preferredType;
+
+  if (type === "generative") {
+    const meeting = /議事|打合せ|打ち合わせ|記録簿|協議|指示事項|行政|発注者/i.test(normalized);
+    const report = /点検|報告書|台帳|写真|所見/i.test(normalized);
+    const proposal = /提案|PoC|相談|営業|顧客/i.test(normalized);
+    return {
+      type,
+      templateId: "",
+      dataset: "none",
+      goal: "document",
+      title: meeting ? "打合せ記録簿作成" : report ? "点検報告書作成" : proposal ? "AI活用提案書作成" : "生成AI業務アプリ",
+      tag: "文書業務",
+      humanMode: "文書・資料を作るAI",
+      inputDescription: meeting ? "議事録・会議メモのサンプル1件" : "業務資料・メモのサンプル1件",
+      output: meeting ? "協議事項、指示事項、未確認事項、記録簿ダウンロード" : report ? "所見、報告書下書き、確認事項、出力ファイル" : "整理結果、業務文書、確認事項、出力ファイル",
+      dataPlan: meeting ? "議事録サンプルを1件用意" : "相談内容に合う入力サンプルを1件用意",
+      screenPlan: meeting ? "ドラッグ&ドロップ、記録簿生成、Wordダウンロード" : "入力、AI整理、成果物、確認事項を1画面化",
+      checks: meeting ? ["協議/指示を分離", "不足確認を表示", "Wordで出力"] : ["入力を用意", "結果を編集", "成果物を出力"],
+      instructionFocus: "生成AI活用。曖昧な相談内容から、入力ファイルまたはテキストを処理して業務成果物を出すアプリに仕上げる。"
+    };
+  }
+
+  const intrusion = /侵入|立入|立ち入り|人|人物|CCTV/i.test(normalized);
+  const flood = /洪水|水位|雨量|流量|越水|河川|氾濫|上昇|予測/i.test(normalized);
+  const crack = /ひび|亀裂|損傷|橋梁|トンネル|コンクリート|点検写真/i.test(normalized);
+  const slope = /斜面|地すべり|崩壊|変位|地下水|傾斜/i.test(normalized);
+  const templateId = intrusion || flood ? (isTimeSeries && !intrusion ? "timeseries-anomaly" : "river-monitoring") : crack ? "inspection-damage" : slope ? "slope-monitoring" : scenario.templateId || "river-monitoring";
+  const dataset = flood && templateId === "timeseries-anomaly" ? "river" : slope ? "slope" : scenario.dataset || "river";
+  const goal = /異常/.test(normalized) ? "anomaly" : "forecast";
+  return {
+    type: "specialized",
+    templateId,
+    dataset,
+    goal,
+    title: intrusion ? "河川CCTV侵入検知" : flood ? "水位・雨量 洪水アラート" : crack ? "ひび割れ検知" : slope ? "斜面監視AI" : scenario.title,
+    tag: intrusion ? "画像検知" : templateId === "timeseries-anomaly" ? "時系列予測" : crack ? "点検画像" : "現場AI",
+    humanMode: "画像・センサーで判断するAI",
+    inputDescription: intrusion ? "CCTVデモ画像1件" : templateId === "timeseries-anomaly" ? "計測データ1セット" : "現場デモ画像1件",
+    output: intrusion ? "人の侵入検知、危険区域判定、現地確認アラート" : flood ? "水位・雨量の予測、洪水リスク、自治体向けアラート" : crack ? "ひび割れ検知、位置、点検コメント" : "AI検知結果、警戒判定、通知文",
+    dataPlan: intrusion ? "人が写ったCCTV画像を1件用意" : templateId === "timeseries-anomaly" ? "水位・雨量などの時系列を1セット用意" : "対象が分かる現場画像を1件用意",
+    screenPlan: intrusion ? "画像、検知枠、危険区域、アラート文" : templateId === "timeseries-anomaly" ? "現在値、予測線、警戒判定、通知文" : "画像、AI検知、根拠グラフ、通知文",
+    checks: intrusion ? ["人を検知", "危険区域を判定", "現地確認文を出力"] : templateId === "timeseries-anomaly" ? ["現在値を表示", "予測を表示", "警戒文を出力"] : ["対象を検知", "根拠を表示", "通知文を出力"],
+    instructionFocus: "特化型AI。実データがなくても、相談内容に合うデモデータ1件と推論結果をアプリ内で用意し、完成した監視・点検コンソールとして見せる。"
+  };
+}
+
 function consultChartSvg(scenario) {
   const base = scenario.id === "flood-alert"
     ? [0.18, 0.22, 0.29, 0.38, 0.52, 0.67, 0.78, 0.86]
@@ -1226,75 +1404,72 @@ function consultChartSvg(scenario) {
   </svg>`;
 }
 
-function consultationPreview(scenario) {
-  if (scenario.type === "generative") {
+function consultationPlanHtml(plan) {
+  if (plan.type === "generative") {
     return html`
       <div class="consult-preview-card">
-        <span>簡易モック</span>
-        <strong>入力1件から完成画面を作る</strong>
-        <p>サンプル入力と出力画面を1セットだけ自動で用意します。</p>
+        <span>AIの理解</span>
+        <strong>${escapeHtml(plan.humanMode)}</strong>
+        <p>${escapeHtml(plan.title)}として作ります。</p>
+      </div>
+      <div class="consult-direction-grid">
+        <div><span>用意するもの</span><strong>${escapeHtml(plan.dataPlan)}</strong></div>
+        <div><span>完成画面</span><strong>${escapeHtml(plan.screenPlan)}</strong></div>
       </div>
       <div class="consult-flow-mini">
-        ${scenario.frames.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+        ${plan.checks.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
       </div>`;
   }
-  if (scenario.id === "river-intrusion") {
-    return html`
+  const chartScenario = { id: plan.templateId === "timeseries-anomaly" ? "flood-alert" : "other" };
+  const imageMock = plan.templateId !== "timeseries-anomaly";
+  return html`
+    <div class="consult-preview-card">
+      <span>AIの理解</span>
+      <strong>${escapeHtml(plan.humanMode)}</strong>
+      <p>${escapeHtml(plan.title)}として作ります。</p>
+    </div>
+    ${imageMock ? `
       <div class="consult-mock cctv">
         <div class="mock-camera">
           <span class="mock-river"></span>
           <span class="mock-bank"></span>
           <span class="mock-person"></span>
-          <span class="mock-detect">検知</span>
+          <span class="mock-detect">${escapeHtml(plan.checks[0] || "検知")}</span>
         </div>
         <div class="mock-result">
-          <strong>危険区域に人を検知</strong>
-          <span>現地確認アラートを生成</span>
+          <strong>${escapeHtml(plan.dataPlan)}</strong>
+          <span>${escapeHtml(plan.screenPlan)}</span>
         </div>
-      </div>
-      <div class="consult-preview-card">
-        <span>自動生成するもの</span>
-        <strong>CCTV画像1件 + 検知結果</strong>
-        <p>${escapeHtml(scenario.output)}</p>
-      </div>`;
-  }
-  if (scenario.id === "flood-alert") {
-    return html`
-      <div class="consult-preview-card">
-        <span>自動生成するもの</span>
-        <strong>水位・雨量データ1セット</strong>
-        <p>水位上昇、予測レンジ、警戒判定を1画面にします。</p>
-      </div>
-      ${consultChartSvg(scenario)}
-      <div class="consult-flow-mini">
-        ${scenario.frames.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
-      </div>`;
-  }
-  return html`
-    <div class="consult-preview-card">
-      <span>自動生成するもの</span>
-      <strong>デモデータ1件 + 完成画面</strong>
-      <p>相談内容に合わせた最小モックを作ります。</p>
+      </div>` : consultChartSvg(chartScenario)}
+    <div class="consult-direction-grid">
+      <div><span>用意するもの</span><strong>${escapeHtml(plan.dataPlan)}</strong></div>
+      <div><span>完成画面</span><strong>${escapeHtml(plan.screenPlan)}</strong></div>
     </div>
     <div class="consult-flow-mini">
-      ${scenario.frames.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+      ${plan.checks.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
     </div>`;
 }
 
-function consultationInstruction(scenario, prompt) {
-  const base = String(prompt || scenario.prompt || "").trim();
-  const dataSpec = scenario.id === "river-intrusion"
-    ? "相談モードでは、完成アプリ内で河川CCTVのデモ画像1件、人の侵入位置、危険区域、検知信頼度、滞在時間を自動生成する。完成画面は左にCCTV画像と検知枠、右に検知人数・危険区域判定・アラート文を表示する。"
-    : scenario.id === "flood-alert"
-      ? "相談モードでは、完成アプリ内で水位計・雨量のデモデータ1セット、上昇速度、6時間予測、24時間予測、警戒ラインを自動生成する。完成画面はリアルタイム水位、雨量、予測レンジ、洪水リスク、自治体向けアラート文を表示する。"
-      : scenario.type === "generative"
-        ? "相談モードでは、完成アプリ内でサンプル入力1件、処理結果、成果物ダウンロードを自動生成する。"
-        : "相談モードでは、完成アプリ内で現場画像または時系列データを1件だけ自動生成し、AI検知結果と通知文につなげる。";
-  return `${base}\n\n${dataSpec}\n画面上の説明は短くし、参加者が完成アプリをすぐ操作できる構成にしてください。`;
+function consultationInstruction(plan, prompt) {
+  const base = String(prompt || "").trim();
+  return `${base}
+
+相談内容が曖昧な場合でも、以下の方向性で補完して完成アプリにしてください。
+- 方向性: ${plan.humanMode}
+- アプリ案: ${plan.title}
+- デモデータ: ${plan.dataPlan}
+- 完成画面: ${plan.screenPlan}
+- 出力: ${plan.output}
+
+相談モードなので、デモデータは1ケースで十分です。画像系なら「リアルな現場画像1枚と、そこに対応する検知結果」、時系列なら「水位・雨量などの1セットと予測結果」、文書系なら「サンプル入力1件と成果物」をアプリ内で自然に用意してください。
+ユーザーはAIやITに詳しくない前提です。専門用語の説明を増やさず、入力、AI判定、完成結果が直感的に分かるUIにしてください。
+${plan.instructionFocus}`;
 }
 
 function consultationForm() {
   const scenario = currentConsultScenario();
+  const text = consultText();
+  const plan = inferConsultPlan(text, state.consultType, scenario);
   const scenarioCards = consultationScenarios
     .filter((item) => item.type === state.consultType)
     .map((item) => `
@@ -1305,27 +1480,28 @@ function consultationForm() {
 
   return html`
     <p class="eyebrow">相談モード</p>
-    <h2>データがない状態から作る</h2>
+    <h2>相談から方向性を整理する</h2>
     <section class="consult-builder">
       <div class="consult-main">
         <div class="consult-type-switch">
-          <button type="button" data-consult-type="specialized" class="${state.consultType === "specialized" ? "active" : ""}">土木の特化型AI</button>
-          <button type="button" data-consult-type="generative" class="${state.consultType === "generative" ? "active" : ""}">生成AI活用</button>
+          <button type="button" data-consult-type="specialized" class="${state.consultType === "specialized" ? "active" : ""}">画像・センサーで判断</button>
+          <button type="button" data-consult-type="generative" class="${state.consultType === "generative" ? "active" : ""}">文書・資料を作成</button>
         </div>
+        <p class="consult-helper">近い相談例を選ぶか、そのまま書いてください。右側で作成方針を確認できます。</p>
         <div class="consult-scenarios">${scenarioCards}</div>
         <label class="field">
-          <span>相談内容</span>
-          <textarea name="consultation" class="big-prompt">${escapeHtml(scenario.prompt)}</textarea>
+          <span>やりたいこと</span>
+          <textarea name="consultation" class="big-prompt" data-consultation-input placeholder="例：河川のカメラで危ない場所に人が入ったら分かるようにしたい">${escapeHtml(text)}</textarea>
         </label>
       </div>
       <aside class="consult-side">
         <div class="consult-side-head">
           <div>
-            <span class="pill">${escapeHtml(scenario.tag)}</span>
-            <h3>${escapeHtml(scenario.title)}</h3>
+            <span class="pill">${escapeHtml(plan.tag)}</span>
+            <h3>作成前の確認</h3>
           </div>
         </div>
-        ${consultationPreview(scenario)}
+        <div id="consultPlan">${consultationPlanHtml(plan)}</div>
       </aside>
     </section>`;
 }
@@ -1347,14 +1523,22 @@ async function submitProject(event) {
   if (mode === "consultation") {
     const scenario = currentConsultScenario();
     const prompt = String(data.get("consultation") || scenario.prompt || "").trim();
-    submitAiType = scenario.type;
-    templateIds = scenario.type === "specialized" ? [scenario.templateId || "river-monitoring"] : [];
-    timeseriesDataset = scenario.dataset || state.tsDataset;
-    timeseriesGoal = scenario.goal === "anomaly" ? "anomaly" : "forecast";
-    data.set("title", `${scenario.title} デモ`);
-    data.set("instruction", consultationInstruction(scenario, prompt));
-    data.set("inputDescription", "相談内容に基づいて生成したデモデータ");
-    data.set("outputDescription", scenario.output);
+    const plan = inferConsultPlan(prompt, state.consultType, scenario);
+    submitAiType = plan.type;
+    templateIds = plan.type === "specialized" ? [plan.templateId || "river-monitoring"] : [];
+    timeseriesDataset = plan.dataset || state.tsDataset;
+    timeseriesGoal = plan.goal === "anomaly" ? "anomaly" : "forecast";
+    data.set("title", `${plan.title} デモ`);
+    data.set("instruction", consultationInstruction(plan, prompt));
+    data.set("inputDescription", plan.inputDescription);
+    data.set("outputDescription", plan.output);
+    data.set("consultationPlan", [
+      `方向性: ${plan.humanMode}`,
+      `アプリ案: ${plan.title}`,
+      `デモデータ: ${plan.dataPlan}`,
+      `完成画面: ${plan.screenPlan}`,
+      `確認ポイント: ${plan.checks.join(" / ")}`
+    ].join("\n"));
     data.set("dataMode", "default");
   }
   data.set("aiType", submitAiType);
@@ -1372,11 +1556,20 @@ async function submitProject(event) {
       data.set("outputDescription", "業務で使える下書き、要点、確認事項を生成");
     }
   }
+  if (submitAiType === "specialized") {
+    data.set("annotationSummary", specializedAnnotationSummary(templateIds[0] || "slope-monitoring"));
+  }
+  if (state.stagedFiles.length) {
+    data.delete("files");
+    state.stagedFiles.forEach((file) => data.append("files", file, file.name));
+    data.set("dataMode", "upload");
+  }
 
   try {
     const response = await api("/api/projects", { method: "POST", body: data });
     state.activeProjectId = response.project.id;
     state.keepImproveOpen = false;
+    state.stagedFiles = [];
     await loadWorkspace();
     renderApp();
     pollProject(response.project.id);
