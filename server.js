@@ -451,7 +451,7 @@ function generativeBlueprint(project) {
 function buildPrompt(project) {
   const templates = selectedTemplates(project.selectedTemplateIds);
   const primaryTemplate = templates[0];
-  let profile = primaryTemplate ? specializedProfile(primaryTemplate.id) : null;
+  let profile = primaryTemplate ? specializedProfileForProject(primaryTemplate.id, project) : null;
   if (profile?.mode === "timeseries") profile = { ...profile, ...timeseriesVariant(project) };
   const blueprint = project.aiType === "generative" ? generativeBlueprint(project) : null;
   const templateText = templates.map((item) => {
@@ -653,6 +653,39 @@ function specializedProfile(templateId) {
   return profiles[templateId] || profiles["slope-monitoring"];
 }
 
+function specializedProfileForProject(templateId, project = {}) {
+  const text = `${project.title || ""} ${project.instruction || ""} ${project.inputDescription || ""} ${project.outputDescription || ""}`;
+  if (templateId === "river-monitoring" && /侵入|立入|立ち入り|人|人物|CCTV|河川敷|危険区域/i.test(text)) {
+    return {
+      ...specializedProfile("river-monitoring"),
+      scenario: "intrusion",
+      appName: "河川CCTV侵入検知AI",
+      outputTitle: "侵入検知アラート",
+      location: "R-12 河川CCTV監視地点",
+      imagePrompt: "Photorealistic fixed CCTV camera image of a Japanese river channel during rain, embankment walkway, water level gauge, small person entering a restricted riverside area, civil engineering monitoring context.",
+      frames: ["通常", "接近", "侵入", "滞在", "警戒", "現在"],
+      annotations: [
+        ["人の侵入"],
+        ["危険区域", "滞在時間", "確認要否"],
+        ["現地確認", "通知文", "履歴"]
+      ],
+      teachTitle: "人の侵入位置の確認",
+      teachText: "危険区域内の人だけを指定し、侵入検知の教師データにします。",
+      aiProcess: "CCTV画像から人の侵入を検知し、危険区域との重なり、滞在時間、現地確認要否を判定します。",
+      completedApp: "完成アプリでは、最新CCTV画像から人の侵入を検知し、危険区域アラートと現地確認文を更新します。",
+      metrics: [
+        ["検知人数", "1人", "危険区域内"],
+        ["滞在時間", "3分20秒", "確認要"],
+        ["信頼度", "0.91", "警戒"]
+      ],
+      series: [0.04, 0.08, 0.22, 0.57, 0.78, 0.91],
+      threshold: 0.7,
+      report: "R-12河川CCTVで、危険区域内に人の侵入を検知しました。水位上昇中のため、現地確認と注意喚起を推奨します。"
+    };
+  }
+  return specializedProfile(templateId);
+}
+
 function timeseriesVariant(project = {}) {
   const datasets = {
     slope: {
@@ -668,6 +701,8 @@ function timeseriesVariant(project = {}) {
       report: "S-04では地下水位と変位速度が同時に上昇し、警戒域に入りました。現地確認と監視頻度の引き上げを推奨します。"
     },
     river: {
+      appName: "水位・雨量 洪水アラートAI",
+      outputTitle: "洪水アラート文",
       location: "R-08 河川水位観測所",
       frames: ["位置", "雨量", "水位", "上昇速度"],
       metrics: [
@@ -680,6 +715,8 @@ function timeseriesVariant(project = {}) {
       report: "R-08では水位上昇が続き、6時間先に注意ラインへ近づく予測です。巡視判断の準備を推奨します。"
     },
     road: {
+      appName: "道路冠水予測AI",
+      outputTitle: "通行注意アラート文",
       location: "F-02 道路冠水水位計",
       frames: ["位置", "雨量", "路面水位", "排水状況"],
       metrics: [
@@ -759,6 +796,10 @@ function monitoringFrameSrc(templateId, index) {
   return `/assets/monitoring/${monitoringSlug(templateId)}/frame-${String(index).padStart(2, "0")}.jpg`;
 }
 
+function monitoringFrameSrcBySlug(slug, index) {
+  return `/assets/monitoring/${slug}/frame-${String(index).padStart(2, "0")}.jpg`;
+}
+
 function segRegion(label, d, x, y, secondary = false, kind = "area") {
   return { label, path: d, x, y, w: 14, h: 14, muted: secondary, kind };
 }
@@ -797,16 +838,29 @@ function monitoringRegions(templateId, frameIndex) {
   return flood[frameIndex] || flood[5];
 }
 
+function intrusionRegions(frameIndex) {
+  const frames = {
+    0: [],
+    1: [segRegion("人", "M 84 33 L 90 33 L 90 48 L 84 48 Z", 84, 33)],
+    2: [segRegion("人", "M 78 41 L 86 41 L 86 61 L 78 61 Z", 78, 41)],
+    3: [segRegion("人", "M 73 50 L 82 50 L 82 74 L 73 74 Z", 73, 50)],
+    4: [segRegion("人", "M 69 58 L 79 58 L 79 83 L 69 83 Z", 69, 58)],
+    5: [segRegion("人", "M 64 65 L 75 65 L 75 94 L 64 94 Z", 64, 65)]
+  };
+  return frames[frameIndex] || frames[5];
+}
+
 function imageFrameStates(templateId, profile) {
   const labels = profile.frames.length ? profile.frames : ["1", "2", "3", "4", "5", "6"];
-  const frame = (index, risk, metrics, regions, result) => ({
+  const frame = (index, risk, metrics, regions, result, extra = {}) => ({
     frame: labels[index] || `フレーム${index + 1}`,
     frameIndex: index,
     image: monitoringFrameSrc(templateId, index),
     risk,
     metrics,
     regions,
-    result
+    result,
+    ...extra
   });
   if (templateId === "slope-monitoring") {
     return [
@@ -826,6 +880,16 @@ function imageFrameStates(templateId, profile) {
       frame(3, "注意", [["1本", "長い"], ["0.36 mm", "要記録"], ["P2", "確認"]], monitoringRegions(templateId, 3), "ひび割れ延長が長く、最大幅も記録対象です。"),
       frame(4, "警戒", [["1本", "要確認"], ["0.38 mm", "基準超過"], ["P2", "報告書反映"]], monitoringRegions(templateId, 4), profile.report),
       frame(5, "警戒", [["1本", "要確認"], ["0.42 mm", "優先確認"], ["P2", "早期確認"]], monitoringRegions(templateId, 5), "細いひび割れの幅が広がっています。早期確認対象として報告書下書きへ反映します。")
+    ];
+  }
+  if (profile.scenario === "intrusion") {
+    return [
+      frame(0, "正常", [["検知人数", "0人", "通常"], ["危険区域", "侵入なし", "監視中"], ["信頼度", "0.08", "正常"]], intrusionRegions(0), "危険区域内に人は検知されていません。通常監視を継続します。", { image: monitoringFrameSrcBySlug("river", 0), person: { hidden: true } }),
+      frame(1, "正常", [["検知人数", "1人", "遠方"], ["危険区域", "区域外", "監視中"], ["信頼度", "0.42", "参考"]], intrusionRegions(1), "河川管理用通路付近に人物候補がありますが、危険区域外です。監視を継続します。", { image: monitoringFrameSrcBySlug("river", 1), person: { left: "86%", top: "37%", scale: 0.56 } }),
+      frame(2, "注意", [["検知人数", "1人", "接近"], ["危険区域", "境界付近", "注意"], ["信頼度", "0.68", "注意"]], intrusionRegions(2), "人物が危険区域の境界付近へ接近しています。水位上昇中のため注意表示に切り替えます。", { image: monitoringFrameSrcBySlug("river", 2), person: { left: "80%", top: "48%", scale: 0.7 } }),
+      frame(3, "警戒", [["検知人数", "1人", "区域内"], ["滞在時間", "1分10秒", "確認要"], ["信頼度", "0.86", "警戒"]], intrusionRegions(3), "危険区域内に人の侵入を検知しました。現地確認と注意喚起を推奨します。", { image: monitoringFrameSrcBySlug("river", 3), person: { left: "75%", top: "58%", scale: 0.86 } }),
+      frame(4, "警戒", [["検知人数", "1人", "区域内"], ["滞在時間", "2分30秒", "確認要"], ["信頼度", "0.91", "警戒"]], intrusionRegions(4), profile.report, { image: monitoringFrameSrcBySlug("river", 4), person: { left: "71%", top: "66%", scale: 0.98 } }),
+      frame(5, "警戒", [["検知人数", "1人", "区域内"], ["滞在時間", "3分20秒", "連絡"], ["信頼度", "0.93", "警戒"]], intrusionRegions(5), "侵入状態が継続しています。監視担当者へ通知し、現地確認履歴に記録します。", { image: monitoringFrameSrcBySlug("river", 5), person: { left: "66%", top: "74%", scale: 1.08 } })
     ];
   }
   return [
@@ -853,14 +917,15 @@ function generatedIndex(project) {
     : project.files.map((file) => file.originalName).join("、");
   const features = (primaryTemplate?.features || primaryTemplate?.flow || []).slice(0, 3);
   const templateId = primaryTemplate?.id || "slope-monitoring";
-  let profile = specializedProfile(templateId);
+  let profile = specializedProfileForProject(templateId, project);
   if (profile.mode === "timeseries") profile = { ...profile, ...timeseriesVariant(project) };
   const blueprint = generativeBlueprint(project);
   const annotations = profile.annotations[0];
   const isTimeseries = profile.mode === "timeseries";
   const frameStates = imageFrameStates(templateId, profile);
+  const specializedTitle = profile.appName || primaryTemplate?.title || "AIモニタリング";
   const specializedSummary = primaryTemplate
-    ? `${primaryTemplate.title}の完成デモです。最新データを取り込み、AI判定・予測・速報文を業務画面で確認できます。`
+    ? `${specializedTitle}の完成デモです。最新データを取り込み、AI判定・予測・速報文を業務画面で確認できます。`
     : "AI判定と出力を確認できる業務デモです。";
   const generativeSummary = "生成AI活用の指示から作成した、すぐ試せる業務アプリです。";
   const specializedScene = isTimeseries ? `
@@ -887,6 +952,7 @@ function generatedIndex(project) {
       </div>
       <div class="photo-stage">
         <img id="liveImage" class="monitor-frame" src="${escapeHtml(frameStates[0].image)}" alt="${escapeHtml(profile.location)}">
+        ${profile.scenario === "intrusion" ? `<span id="livePerson" class="live-person" aria-hidden="true"></span>` : ""}
         <div id="aiOverlay" class="ai-overlay"></div>
       </div>
       <div class="thumb-row">
@@ -898,7 +964,7 @@ function generatedIndex(project) {
       <div class="demo-head">
         <div>
           <span class="tag">${escapeHtml(primaryTemplate?.tag || "特化型AI")}</span>
-          <h2>${escapeHtml(primaryTemplate?.title || "AIモニタリング")}モニタリング</h2>
+          <h2>${escapeHtml(specializedTitle)}モニタリング</h2>
           ${improvementNote ? `<p class="improvement-note">${escapeHtml(improvementNote)}</p>` : ""}
         </div>
         <div class="risk ${level === "警戒" ? "alert" : level === "注意" ? "watch" : ""}" id="riskCard">
@@ -918,7 +984,7 @@ function generatedIndex(project) {
         </div>
       </div>
       <div class="result-panel" id="demoResult">
-        <h3>${templateId === "river-monitoring" ? "通行注意通知文" : templateId === "inspection-damage" ? "点検報告コメント" : templateId === "timeseries-anomaly" ? "予測アラート文" : "点検依頼文"}</h3>
+        <h3>${escapeHtml(profile.outputTitle || (templateId === "river-monitoring" ? "通行注意通知文" : templateId === "inspection-damage" ? "点検報告コメント" : templateId === "timeseries-anomaly" ? "予測アラート文" : "点検依頼文"))}</h3>
         <p>${escapeHtml(profile.report)}</p>
         ${improvementNote ? `<p>${escapeHtml(improvement.prompt)}</p>` : ""}
       </div>
@@ -1223,6 +1289,32 @@ button {
   object-fit: cover;
   transition: opacity 0.45s ease;
 }
+.live-person {
+  position: absolute;
+  left: 70%;
+  top: 62%;
+  width: 18px;
+  height: 38px;
+  border-radius: 999px 999px 8px 8px;
+  background: #16202c;
+  box-shadow: 0 -12px 0 -4px #16202c, 0 0 0 2px rgba(255,255,255,0.42);
+  transform: translate(-50%, -50%) scale(0.9);
+  z-index: 2;
+  transition: left 0.45s ease, top 0.45s ease, transform 0.45s ease, opacity 0.2s ease;
+}
+.live-person::before,
+.live-person::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  width: 2px;
+  height: 24px;
+  background: rgba(255,255,255,0.72);
+  transform-origin: top;
+}
+.live-person::before { transform: rotate(34deg); }
+.live-person::after { transform: rotate(-34deg); }
 .ai-overlay {
   position: absolute;
   inset: 0;
@@ -1799,21 +1891,22 @@ function timeseriesAnimationStates(profile) {
 
 function generatedJs(project) {
   const templateId = selectedTemplates(project.selectedTemplateIds)[0]?.id || "slope-monitoring";
-  let profile = specializedProfile(templateId);
+  let profile = specializedProfileForProject(templateId, project);
   if (profile.mode === "timeseries") profile = { ...profile, ...timeseriesVariant(project) };
   const blueprint = generativeBlueprint(project);
   const isTimeseries = profile.mode === "timeseries";
   const frameStates = imageFrameStates(templateId, profile);
-  const resultTitle = templateId === "river-monitoring"
+  const resultTitle = profile.outputTitle || (templateId === "river-monitoring"
     ? "通行注意通知文"
     : templateId === "inspection-damage"
       ? "点検報告コメント"
       : templateId === "timeseries-anomaly"
         ? "予測アラート文"
-        : "点検依頼文";
+        : "点検依頼文");
   return `const projectTitle = ${JSON.stringify(project.title)};
 const isSpecialized = ${JSON.stringify(project.aiType === "specialized")};
 const isTimeseries = ${JSON.stringify(isTimeseries)};
+const profileScenario = ${JSON.stringify(profile.scenario || "")};
 const specializedResultTitle = ${JSON.stringify(resultTitle)};
 const latestImprovement = ${JSON.stringify(latestImprovement(project)?.prompt || "")};
 const specializedReport = ${JSON.stringify(profile.report)};
@@ -1940,6 +2033,17 @@ function updateSpecialized() {
   const state = imageStates[tick % imageStates.length];
   const image = document.getElementById("liveImage");
   if (image && image.getAttribute("src") !== state.image) image.setAttribute("src", state.image);
+  const person = document.getElementById("livePerson");
+  if (person) {
+    if (!state.person || state.person.hidden) {
+      person.style.opacity = "0";
+    } else {
+      person.style.opacity = "1";
+      person.style.left = state.person.left || "70%";
+      person.style.top = state.person.top || "62%";
+      person.style.transform = "translate(-50%, -50%) scale(" + (state.person.scale || 0.9) + ")";
+    }
+  }
   setText("liveFrameLabel", state.frame);
   state.metrics.forEach((row, index) => {
     setText("metricValue" + index, row.length > 2 ? row[1] : row[0]);

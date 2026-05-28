@@ -8,6 +8,8 @@ let state = {
   templates: [],
   projects: [],
   selectedTemplates: new Set(["slope-monitoring"]),
+  consultType: "specialized",
+  consultScenario: "river-intrusion",
   activeProjectId: null,
   keepImproveOpen: false,
   improveTarget: "screen",
@@ -33,6 +35,10 @@ const statusLabel = {
 
 const generativeExamples = [
   {
+    label: "打合せ記録簿",
+    prompt: "議事録、会議メモ、音声文字起こしを入力すると、行政向けの打合せ記録簿を作成する業務アプリ。協議事項、指示事項、回答・対応方針、未確認事項を明確に分け、発注者に提出しやすい文体へ整える。ドラッグアンドドロップで議事録を読み込み、生成結果を画面で確認し、Wordで開ける記録簿ファイルとしてダウンロードできるようにする。"
+  },
+  {
     label: "業務計画書",
     prompt: "特記仕様書、過去の業務計画書、現場条件メモを入力すると、業務条件を抽出し、業務計画書の章立て、実施方針、工程、実施体制、照査ポイント、顧客確認事項を1画面で生成する業務アプリ。左に入力資料、中央に抽出条件、右に計画書ドラフトと確認事項を表示し、Wordに貼り付けやすい文章で出力する。"
   },
@@ -51,6 +57,65 @@ const generativeExamples = [
   {
     label: "自由記述",
     prompt: "入力ファイルやテキストを受け取り、必要な処理を行い、業務でそのまま使える成果物を出力するアプリ。入力、処理、出力、確認事項が1画面で分かるようにし、利用者が追加指示で改善できる構成にする。"
+  }
+];
+
+const consultationScenarios = [
+  {
+    id: "river-intrusion",
+    type: "specialized",
+    title: "河川CCTV侵入検知",
+    tag: "カメラ監視",
+    templateId: "river-monitoring",
+    dataset: "intrusion",
+    goal: "detection",
+    prompt: "実データはまだありません。河川CCTVで管理区域への人の侵入を検知し、危険区域に入った場合に監視画面で赤く表示し、現地確認のアラート文を出すデモを作りたいです。CCTV画像1件と検知結果1件の簡易モックから、完成イメージが分かるモニタリングコンソールにしてください。",
+    output: "河川CCTV画像、人の侵入検知、危険区域判定、現地確認アラート",
+    frames: ["CCTV", "検知", "判定", "通知"]
+  },
+  {
+    id: "flood-alert",
+    type: "specialized",
+    title: "水位・雨量 洪水アラート",
+    tag: "水位計 + 雨量",
+    templateId: "timeseries-anomaly",
+    dataset: "river",
+    goal: "forecast",
+    prompt: "実データはまだありません。河川の水位計と雨量データから、6時間後から24時間後の洪水リスクを予測し、警戒ラインに近づく場合に自治体向けのアラート文を出すデモを作りたいです。水位・雨量のデモデータ1セットから、予測レンジと警戒判定が一目で分かる監視コンソールにしてください。",
+    output: "水位・雨量の時系列、洪水リスク予測、警戒判定、自治体向けアラート",
+    frames: ["水位計", "雨量", "上昇速度", "6h予測", "24h予測"]
+  },
+  {
+    id: "slope-consult",
+    type: "specialized",
+    title: "斜面監視AI相談",
+    tag: "斜面 + 変位",
+    templateId: "slope-monitoring",
+    dataset: "slope",
+    goal: "forecast",
+    prompt: "実データはまだありません。豪雨後の斜面監視カメラ画像と雨量・変位データを使い、地すべり領域を検知し、点検要否を判断するデモを作りたいです。画像、グラフ、警戒判定、点検依頼文まで見える画面にしてください。",
+    output: "斜面画像、地すべり検知、雨量・変位グラフ、点検依頼文",
+    frames: ["平常", "降雨", "変化", "拡大", "警戒", "現在"]
+  },
+  {
+    id: "meeting-record",
+    type: "generative",
+    title: "打合せ記録簿作成",
+    tag: "行政向け文書",
+    templateId: "",
+    prompt: "議事録や会議メモをドラッグアンドドロップすると、行政向けの打合せ記録簿を作成するアプリを作りたいです。協議事項、指示事項、回答・対応方針、未確認事項を分け、事後記載でも不足が分かる確認リストを付け、Wordで開けるファイルとしてダウンロードできるようにしてください。",
+    output: "打合せ記録簿、協議事項、指示事項、確認リスト、Wordダウンロード",
+    frames: ["議事録", "抽出", "整理", "記録簿"]
+  },
+  {
+    id: "proposal-consult",
+    type: "generative",
+    title: "AI活用提案書作成",
+    tag: "相談整理",
+    templateId: "",
+    prompt: "顧客からの相談メモを入力すると、AI活用の課題整理、PoC案、必要データ、スケジュール、提案メールを作る業務アプリを作りたいです。土木分野のAI相談を、支社の担当者がすぐ社内共有できる形にしてください。",
+    output: "課題整理、PoC案、必要データ、提案メール",
+    frames: ["相談", "課題", "PoC", "提案"]
   }
 ];
 
@@ -151,7 +216,7 @@ function renderApp() {
   app.innerHTML = html`
     <section class="app-shell">
       <nav class="top-nav">
-        <button class="brand brand-button" type="button" data-view="builder">
+        <button class="brand brand-button" type="button" data-view="builder" title="トップに戻る" aria-label="トップに戻る">
           <div class="mark">OX</div>
           <div>
             <strong>OX AI Builder</strong>
@@ -213,6 +278,11 @@ function renderBuilder(container) {
           <h2>生成AI活用</h2>
           <p>指示文から、すぐ試せる業務アプリを作ります。</p>
         </button>
+        <button class="mode-card featured" type="button" data-ai-type="consultation">
+          <span>データなしで相談</span>
+          <h2>相談から作る</h2>
+          <p>相談内容から簡易モックを作り、完成画面まで進めます。</p>
+        </button>
       </section>`;
     document.querySelectorAll("[data-ai-type]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -227,20 +297,36 @@ function renderBuilder(container) {
     return;
   }
 
+  const modeTitle = {
+    specialized: "特化型AI開発",
+    generative: "生成AI活用",
+    consultation: "相談から作る"
+  }[state.aiType] || "アプリ作成";
+  const submitLabel = {
+    specialized: "完成アプリを生成",
+    generative: "完成画面を生成",
+    consultation: "相談からデモを生成"
+  }[state.aiType] || "生成";
+  const formBody = state.aiType === "specialized"
+    ? specializedForm()
+    : state.aiType === "generative"
+      ? generativeForm()
+      : consultationForm();
+
   container.innerHTML = html`
-    <header class="page-head">
+    <header class="page-head with-back">
+      <button type="button" class="back-button" data-builder-back>← トップへ戻る</button>
       <div>
         <p class="eyebrow">アプリ作成</p>
-        <h1>${state.aiType === "specialized" ? "特化型AI開発" : "生成AI活用"}</h1>
+        <h1>${modeTitle}</h1>
       </div>
-      <button type="button" class="secondary" data-builder-back>戻る</button>
     </header>
 
     <section class="builder-grid builder-grid-single">
       <form class="panel" id="projectForm">
-        ${state.aiType === "specialized" ? specializedForm() : generativeForm()}
+        ${formBody}
         <div class="actions">
-          <button type="submit" id="submitBtn" ${state.aiType === "specialized" && state.specializedStep < 4 ? "disabled" : ""}>${state.aiType === "specialized" ? "完成アプリを生成" : "完成画面を生成"}</button>
+          <button type="submit" id="submitBtn" ${state.aiType === "specialized" && state.specializedStep < 4 ? "disabled" : ""}>${submitLabel}</button>
         </div>
         <div id="jobArea"></div>
       </form>
@@ -340,6 +426,23 @@ function renderBuilder(container) {
       if (prompt) prompt.value = button.dataset.example || "";
       document.querySelectorAll("[data-example]").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
+    });
+  });
+  document.querySelectorAll("[data-consult-type]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.consultType = button.dataset.consultType;
+      const next = consultationScenarios.find((item) => item.type === state.consultType);
+      if (next) state.consultScenario = next.id;
+      renderApp();
+    });
+  });
+  document.querySelectorAll("[data-consult-scenario]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const scenario = consultationScenarios.find((item) => item.id === button.dataset.consultScenario);
+      if (!scenario) return;
+      state.consultScenario = scenario.id;
+      state.consultType = scenario.type;
+      renderApp();
     });
   });
   document.querySelectorAll(".drop-zone").forEach((zone) => {
@@ -1093,6 +1196,140 @@ function generativeForm() {
     </section>`;
 }
 
+function currentConsultScenario() {
+  return consultationScenarios.find((item) => item.id === state.consultScenario)
+    || consultationScenarios.find((item) => item.type === state.consultType)
+    || consultationScenarios[0];
+}
+
+function consultChartSvg(scenario) {
+  const base = scenario.id === "flood-alert"
+    ? [0.18, 0.22, 0.29, 0.38, 0.52, 0.67, 0.78, 0.86]
+    : scenario.id === "slope-consult"
+      ? [0.14, 0.19, 0.24, 0.35, 0.49, 0.63, 0.76, 0.88]
+      : [0.1, 0.14, 0.23, 0.42, 0.69, 0.82, 0.9, 0.86];
+  const values = base;
+  const width = 440;
+  const height = 150;
+  const pad = 22;
+  const xStep = (width - pad * 2) / (values.length - 1);
+  const y = (value) => height - pad - value * (height - pad * 2);
+  const points = values.map((value, index) => `${(pad + xStep * index).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+  const thresholdY = y(0.72).toFixed(1);
+  return `<svg class="consult-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="生成した時系列データ">
+    <rect width="${width}" height="${height}" rx="10" fill="#fff"></rect>
+    <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="#c9d8e8"></line>
+    <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" stroke="#c9d8e8"></line>
+    <line x1="${pad}" y1="${thresholdY}" x2="${width - pad}" y2="${thresholdY}" stroke="#d98a1d" stroke-dasharray="6 6"></line>
+    <polyline points="${points}" fill="none" stroke="#1d63b7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></polyline>
+    ${values.map((value, index) => `<circle cx="${(pad + xStep * index).toFixed(1)}" cy="${y(value).toFixed(1)}" r="${index === values.length - 1 ? 6 : 4}" fill="${value > 0.72 ? "#d98a1d" : "#1d63b7"}"></circle>`).join("")}
+  </svg>`;
+}
+
+function consultationPreview(scenario) {
+  if (scenario.type === "generative") {
+    return html`
+      <div class="consult-preview-card">
+        <span>簡易モック</span>
+        <strong>入力1件から完成画面を作る</strong>
+        <p>サンプル入力と出力画面を1セットだけ自動で用意します。</p>
+      </div>
+      <div class="consult-flow-mini">
+        ${scenario.frames.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+      </div>`;
+  }
+  if (scenario.id === "river-intrusion") {
+    return html`
+      <div class="consult-mock cctv">
+        <div class="mock-camera">
+          <span class="mock-river"></span>
+          <span class="mock-bank"></span>
+          <span class="mock-person"></span>
+          <span class="mock-detect">検知</span>
+        </div>
+        <div class="mock-result">
+          <strong>危険区域に人を検知</strong>
+          <span>現地確認アラートを生成</span>
+        </div>
+      </div>
+      <div class="consult-preview-card">
+        <span>自動生成するもの</span>
+        <strong>CCTV画像1件 + 検知結果</strong>
+        <p>${escapeHtml(scenario.output)}</p>
+      </div>`;
+  }
+  if (scenario.id === "flood-alert") {
+    return html`
+      <div class="consult-preview-card">
+        <span>自動生成するもの</span>
+        <strong>水位・雨量データ1セット</strong>
+        <p>水位上昇、予測レンジ、警戒判定を1画面にします。</p>
+      </div>
+      ${consultChartSvg(scenario)}
+      <div class="consult-flow-mini">
+        ${scenario.frames.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+      </div>`;
+  }
+  return html`
+    <div class="consult-preview-card">
+      <span>自動生成するもの</span>
+      <strong>デモデータ1件 + 完成画面</strong>
+      <p>相談内容に合わせた最小モックを作ります。</p>
+    </div>
+    <div class="consult-flow-mini">
+      ${scenario.frames.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+    </div>`;
+}
+
+function consultationInstruction(scenario, prompt) {
+  const base = String(prompt || scenario.prompt || "").trim();
+  const dataSpec = scenario.id === "river-intrusion"
+    ? "相談モードでは、完成アプリ内で河川CCTVのデモ画像1件、人の侵入位置、危険区域、検知信頼度、滞在時間を自動生成する。完成画面は左にCCTV画像と検知枠、右に検知人数・危険区域判定・アラート文を表示する。"
+    : scenario.id === "flood-alert"
+      ? "相談モードでは、完成アプリ内で水位計・雨量のデモデータ1セット、上昇速度、6時間予測、24時間予測、警戒ラインを自動生成する。完成画面はリアルタイム水位、雨量、予測レンジ、洪水リスク、自治体向けアラート文を表示する。"
+      : scenario.type === "generative"
+        ? "相談モードでは、完成アプリ内でサンプル入力1件、処理結果、成果物ダウンロードを自動生成する。"
+        : "相談モードでは、完成アプリ内で現場画像または時系列データを1件だけ自動生成し、AI検知結果と通知文につなげる。";
+  return `${base}\n\n${dataSpec}\n画面上の説明は短くし、参加者が完成アプリをすぐ操作できる構成にしてください。`;
+}
+
+function consultationForm() {
+  const scenario = currentConsultScenario();
+  const scenarioCards = consultationScenarios
+    .filter((item) => item.type === state.consultType)
+    .map((item) => `
+      <button type="button" data-consult-scenario="${escapeHtml(item.id)}" class="${item.id === scenario.id ? "active" : ""}">
+        <span>${escapeHtml(item.tag)}</span>
+        <strong>${escapeHtml(item.title)}</strong>
+      </button>`).join("");
+
+  return html`
+    <p class="eyebrow">相談モード</p>
+    <h2>データがない状態から作る</h2>
+    <section class="consult-builder">
+      <div class="consult-main">
+        <div class="consult-type-switch">
+          <button type="button" data-consult-type="specialized" class="${state.consultType === "specialized" ? "active" : ""}">土木の特化型AI</button>
+          <button type="button" data-consult-type="generative" class="${state.consultType === "generative" ? "active" : ""}">生成AI活用</button>
+        </div>
+        <div class="consult-scenarios">${scenarioCards}</div>
+        <label class="field">
+          <span>相談内容</span>
+          <textarea name="consultation" class="big-prompt">${escapeHtml(scenario.prompt)}</textarea>
+        </label>
+      </div>
+      <aside class="consult-side">
+        <div class="consult-side-head">
+          <div>
+            <span class="pill">${escapeHtml(scenario.tag)}</span>
+            <h3>${escapeHtml(scenario.title)}</h3>
+          </div>
+        </div>
+        ${consultationPreview(scenario)}
+      </aside>
+    </section>`;
+}
+
 async function submitProject(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -1102,18 +1339,38 @@ async function submitProject(event) {
   jobArea.innerHTML = `<div class="log-panel">ジョブを作成しています...</div>`;
 
   const data = new FormData(form);
-  data.set("aiType", state.aiType);
-  data.set("selectedTemplateIds", JSON.stringify(state.aiType === "specialized" ? Array.from(state.selectedTemplates) : []));
-  data.set("timeseriesDataset", state.tsDataset);
-  data.set("timeseriesGoal", state.tsGoal);
+  const mode = state.aiType;
+  let submitAiType = mode;
+  let templateIds = mode === "specialized" ? Array.from(state.selectedTemplates) : [];
+  let timeseriesDataset = state.tsDataset;
+  let timeseriesGoal = state.tsGoal;
+  if (mode === "consultation") {
+    const scenario = currentConsultScenario();
+    const prompt = String(data.get("consultation") || scenario.prompt || "").trim();
+    submitAiType = scenario.type;
+    templateIds = scenario.type === "specialized" ? [scenario.templateId || "river-monitoring"] : [];
+    timeseriesDataset = scenario.dataset || state.tsDataset;
+    timeseriesGoal = scenario.goal === "anomaly" ? "anomaly" : "forecast";
+    data.set("title", `${scenario.title} デモ`);
+    data.set("instruction", consultationInstruction(scenario, prompt));
+    data.set("inputDescription", "相談内容に基づいて生成したデモデータ");
+    data.set("outputDescription", scenario.output);
+    data.set("dataMode", "default");
+  }
+  data.set("aiType", submitAiType);
+  data.set("selectedTemplateIds", JSON.stringify(submitAiType === "specialized" ? templateIds : []));
+  data.set("timeseriesDataset", timeseriesDataset);
+  data.set("timeseriesGoal", timeseriesGoal);
   const hasFiles = Array.from(form.querySelectorAll('input[type="file"]')).some((input) => input.files && input.files.length > 0);
   if (hasFiles) data.set("dataMode", "upload");
-  if (state.aiType === "generative") {
+  if (submitAiType === "generative") {
     const instruction = String(data.get("instruction") || "").trim() || generativeExamples[0].prompt;
     data.set("instruction", instruction);
-    data.set("title", instruction.slice(0, 30) + (instruction.length > 30 ? "..." : ""));
-    data.set("inputDescription", "アップロード資料または入力テキスト");
-    data.set("outputDescription", "業務で使える下書き、要点、確認事項を生成");
+    if (mode !== "consultation") data.set("title", instruction.slice(0, 30) + (instruction.length > 30 ? "..." : ""));
+    if (mode !== "consultation") {
+      data.set("inputDescription", "アップロード資料または入力テキスト");
+      data.set("outputDescription", "業務で使える下書き、要点、確認事項を生成");
+    }
   }
 
   try {
