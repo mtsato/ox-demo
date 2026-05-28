@@ -24,6 +24,24 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
+ensure_host_codex() {
+  if command -v codex >/dev/null 2>&1; then
+    return 0
+  fi
+
+  apt-get update
+  apt-get install -y ca-certificates curl
+
+  if ! command -v npm >/dev/null 2>&1 || ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' >/dev/null 2>&1; then
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    apt-get install -y nodejs
+  fi
+
+  npm install -g @openai/codex@latest
+}
+
+ensure_host_codex
+
 install -o root -g root -m 0755 "${SOURCE}" "${TARGET}"
 install -o root -g root -m 0755 "${STATUS_SOURCE}" "${STATUS_TARGET}"
 install -o root -g root -m 0755 "${DEPLOY_SOURCE}" "${DEPLOY_TARGET}"
