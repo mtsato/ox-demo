@@ -2031,10 +2031,10 @@ p {
 }
 
 .live-log {
-  border: 1px solid #c6d9ef;
+  border: 1px solid #c9dff6;
   border-radius: 8px;
-  background: #0f2136;
-  color: #eaf3ff;
+  background: #f7fbff;
+  color: var(--ink);
   margin: 12px 0 0;
   overflow: hidden;
 }
@@ -2045,8 +2045,8 @@ p {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.08);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: #eaf3ff;
+  border-bottom: 1px solid #d5e7fb;
 }
 
 .live-log-head span {
@@ -2054,23 +2054,45 @@ p {
 }
 
 .live-log-head small {
-  color: #a9c8ed;
+  color: var(--teal-dark);
   font-weight: 800;
 }
 
 .live-log ol {
   margin: 0;
-  padding: 10px 12px 12px 30px;
+  padding: 12px;
   max-height: 220px;
   overflow: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.55;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .live-log li {
-  padding: 2px 0;
-  color: #eaf3ff;
+  position: relative;
+  padding: 8px 10px 8px 38px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid #dbe9f8;
+  border-radius: 7px;
+}
+
+.live-log li::before {
+  content: "AI";
+  position: absolute;
+  left: 9px;
+  top: 9px;
+  width: 21px;
+  height: 21px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  background: var(--teal);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
 }
 
 .empty {

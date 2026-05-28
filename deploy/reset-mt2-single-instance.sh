@@ -92,8 +92,6 @@ docker run -d \
   --name "${APP_CONTAINER}" \
   --restart unless-stopped \
   --network "${NETWORK}" \
-  --security-opt seccomp=unconfined \
-  --security-opt apparmor=unconfined \
   "${ENV_ARGS[@]}" \
   -v "${DATA_DIR}:/app/data" \
   -v /home/sato/.codex:/root/.codex \

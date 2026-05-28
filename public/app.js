@@ -1166,13 +1166,56 @@ function cleanBuildLogLine(line) {
   const raw = codexMatch[1].trim();
   try {
     const parsed = JSON.parse(raw);
-    const message = parsed.message || parsed.msg || parsed.text || parsed.status || parsed.type;
-    if (message) return `codex: ${String(message).slice(0, 220)}`;
-    if (parsed.event) return `codex: ${String(parsed.event).slice(0, 220)}`;
+    const natural = naturalCodexMessage(parsed);
+    if (natural) return natural;
   } catch {
     // Keep raw text when codex emits plain logs.
   }
-  return `codex: ${raw.slice(0, 220)}`;
+  if (/bwrap|sandbox|namespace|apply_patch verification/i.test(raw)) {
+    return "AIが安全な作業環境を確認し、作業方法を調整しています。";
+  }
+  if (/error|failed/i.test(raw)) return "AIが作業中の問題を検知し、別の進め方を試しています。";
+  return raw.length > 180 ? `${raw.slice(0, 180)}...` : raw;
+}
+
+function compactAiText(text, limit = 190) {
+  return String(text || "")
+    .replace(/`/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, limit)
+    .replace(/\s+\S*$/, (tail) => tail.length > 12 ? "" : tail);
+}
+
+function naturalCodexMessage(event) {
+  if (event.type === "turn.completed") {
+    return "AIの作業が完了しました。生成した画面を確認しています。";
+  }
+  const item = event.item || {};
+  if (item.type === "agent_message") {
+    return compactAiText(item.text || "AIが方針を整理しています。", 220);
+  }
+  if (item.type === "command_execution") {
+    const command = String(item.command || "");
+    const output = String(item.aggregated_output || "");
+    if (/bwrap|namespace|sandbox/i.test(output)) {
+      return "AIが安全な作業環境を確認しています。";
+    }
+    if (item.status === "in_progress") {
+      if (/rg --files|find /.test(command)) return "AIがアプリのファイル構成を確認しています。";
+      if (/sed -n|cat /.test(command)) return "AIが画面ファイルの内容を読み取っています。";
+      if (/apply_patch|node|npm|python|tee|cat >/.test(command)) return "AIが画面や処理を更新しています。";
+      return "AIが必要な作業を進めています。";
+    }
+    if (item.status === "failed") {
+      return "AIが作業結果を確認し、別の進め方に切り替えています。";
+    }
+    if (/rg --files|find /.test(command)) return "AIが必要なファイルを把握しました。";
+    if (/sed -n|cat /.test(command)) return "AIが既存画面の構成を確認しました。";
+    if (/apply_patch|node|npm|python|tee|cat >/.test(command)) return "AIが画面ファイルを更新しました。";
+    return "AIが作業結果を確認しました。";
+  }
+  return event.message || event.msg || event.text || "";
 }
 
 function buildStateHtml(project, projectId = "") {
@@ -1187,20 +1230,18 @@ function buildStateHtml(project, projectId = "") {
         </div>
         <div class="live-log">
           <div class="live-log-head">
-            <span>AI実行ログ</span>
-            <small>リアルタイム更新</small>
+            <span>AIの作業メモ</span>
+            <small>生成中</small>
           </div>
           <ol>
             <li>プロンプトを受信しました。</li>
-            <li>作業環境を準備しています。</li>
+            <li>作りたいアプリの入力、処理、出力を整理しています。</li>
           </ol>
         </div>
       </section>`;
   }
   const lastLog = (project.logs || []).slice(-1)[0] || "";
-  const cleanLog = lastLog
-    .replace(/^\[[^\]]+\]\s*/, "")
-    .replace(/Codex CLI/g, "codex");
+  const cleanLog = cleanBuildLogLine(lastLog);
   const logs = (project.logs || []).slice(-12).map(cleanBuildLogLine).filter(Boolean);
   const codexTouched = (project.logs || []).some((line) => /Codex CLI|codex:/i.test(line));
   return html`
@@ -1215,11 +1256,11 @@ function buildStateHtml(project, projectId = "") {
       ${cleanLog ? `<p class="build-log">${escapeHtml(cleanLog.slice(0, 160))}</p>` : ""}
       <div class="live-log">
         <div class="live-log-head">
-          <span>AI実行ログ</span>
-          <small>${project.status === "ready" ? "完了" : project.status === "error" ? "停止" : "リアルタイム更新"}</small>
+          <span>AIの作業メモ</span>
+          <small>${project.status === "ready" ? "完了" : project.status === "error" ? "停止" : "生成中"}</small>
         </div>
         <ol>
-          ${(logs.length ? logs : ["ログを取得しています。"]).map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
+          ${(logs.length ? logs : ["AIが作業内容を整理しています。"]).map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
         </ol>
       </div>
       ${project.previewUrl ? `<a class="primary-link" href="${project.previewUrl}" target="_blank" rel="noreferrer">デモ画面を開く</a>` : ""}
