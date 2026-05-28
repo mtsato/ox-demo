@@ -49,6 +49,10 @@ write_status() {
   "after": "$(json_escape "${after}")",
   "requestCount": ${request_count}
 }
+EOF
+  mv "${STATUS_FILE}.tmp" "${STATUS_FILE}"
+  chown sato:sato "${STATUS_FILE}"
+}
 
 mark_error() {
   local code="$?"
@@ -57,10 +61,6 @@ mark_error() {
   fi
 }
 trap mark_error ERR
-EOF
-  mv "${STATUS_FILE}.tmp" "${STATUS_FILE}"
-  chown sato:sato "${STATUS_FILE}"
-}
 
 exec 9>"${LOCK_FILE}"
 if ! flock -n 9; then
