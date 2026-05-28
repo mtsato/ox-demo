@@ -12,6 +12,7 @@ const DATA_DIR = path.join(APP_ROOT, "data");
 const PROJECTS_DIR = path.join(DATA_DIR, "projects");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 const GENERATED_DIR = path.join(DATA_DIR, "generated");
+const CODEX_RUNS_DIR = path.join(DATA_DIR, "codex-runs");
 const PUBLIC_DIR = path.join(APP_ROOT, "public");
 const MAX_BODY_BYTES = Number(process.env.OX_MAX_UPLOAD_BYTES || 30 * 1024 * 1024);
 const AUTH_ID = process.env.OX_LOGIN_ID || "oyo";
@@ -94,6 +95,7 @@ async function ensureDirs() {
   await fsp.mkdir(PROJECTS_DIR, { recursive: true });
   await fsp.mkdir(UPLOADS_DIR, { recursive: true });
   await fsp.mkdir(GENERATED_DIR, { recursive: true });
+  await fsp.mkdir(CODEX_RUNS_DIR, { recursive: true });
   await fsp.mkdir(DEPLOY_REQUESTS_DIR, { recursive: true });
 }
 
@@ -287,6 +289,38 @@ function parseMultipart(buffer, contentType) {
 function commandExists(name) {
   const result = spawnSync("sh", ["-lc", `command -v ${name}`], { encoding: "utf8" });
   return result.status === 0;
+}
+
+async function copyIfExists(source, dest) {
+  try {
+    await fsp.copyFile(source, dest);
+    await fsp.chmod(dest, 0o600).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function prepareCodexHome(appDir) {
+  const sourceHome = process.env.OX_CODEX_SOURCE_HOME || path.join(process.env.HOME || "/root", ".codex");
+  const runId = `${path.basename(appDir)}-${crypto.randomBytes(4).toString("hex")}`;
+  const codexHome = path.join(CODEX_RUNS_DIR, runId);
+  await fsp.rm(codexHome, { recursive: true, force: true });
+  await fsp.mkdir(codexHome, { recursive: true, mode: 0o700 });
+
+  const copiedAuth = await copyIfExists(path.join(sourceHome, "auth.json"), path.join(codexHome, "auth.json"));
+  await copyIfExists(path.join(sourceHome, "config.toml"), path.join(codexHome, "config.toml"));
+  await copyIfExists(path.join(sourceHome, "installation_id"), path.join(codexHome, "installation_id"));
+
+  await fsp.mkdir(path.join(codexHome, "memories"), { recursive: true, mode: 0o700 });
+  await fsp.mkdir(path.join(codexHome, "sessions"), { recursive: true, mode: 0o700 });
+  await fsp.mkdir(path.join(codexHome, "log"), { recursive: true, mode: 0o700 });
+  await fsp.mkdir(path.join(codexHome, "tmp"), { recursive: true, mode: 0o700 });
+
+  if (!copiedAuth && !process.env.OPENAI_API_KEY) {
+    throw new Error("codex_auth_not_found");
+  }
+  return codexHome;
 }
 
 function projectPath(id) {
@@ -1862,6 +1896,7 @@ async function runCodexIfAvailable(project, appDir) {
 
   await appendLog(project, hasImprovement ? "Codex CLIで改良指示を反映します。" : "Codex CLIでアプリ作成指示を反映します。");
   await appendLog(project, "codex execを起動しました。ファイル差分を作成しています。");
+  const codexHome = await prepareCodexHome(appDir);
   const prompt = await fsp.readFile(path.join(appDir, "prompt.md"), "utf8");
   const codexArgs = [
     "exec",
@@ -1874,47 +1909,57 @@ async function runCodexIfAvailable(project, appDir) {
   ];
   if (CODEX_MODEL) codexArgs.push("-m", CODEX_MODEL);
   codexArgs.push("-");
-  await new Promise((resolve) => {
-    const child = spawn("codex", codexArgs, { cwd: appDir, env: process.env });
+  try {
+    await new Promise((resolve) => {
+      const child = spawn("codex", codexArgs, {
+        cwd: appDir,
+        env: {
+          ...process.env,
+          CODEX_HOME: codexHome
+        }
+      });
 
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (!settled) {
-        child.kill("SIGTERM");
-        appendLog(project, "Codex実行がタイムアウトしたため停止しました。既存の疑似アプリを使用します。").then(resolve);
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          child.kill("SIGTERM");
+          appendLog(project, "Codex実行がタイムアウトしたため停止しました。既存の疑似アプリを使用します。").then(resolve);
+          settled = true;
+        }
+      }, CODEX_TIMEOUT_MS);
+
+      child.stdin.on("error", () => {});
+      child.stdin.end(prompt);
+
+      child.stdout.on("data", (chunk) => {
+        const text = chunk.toString("utf8").trim();
+        if (text) {
+          text.split(/\r?\n/).filter(Boolean).slice(0, 8).forEach((line) => {
+            appendLog(project, `codex: ${line.slice(0, 1000)}`);
+          });
+        }
+      });
+      child.stderr.on("data", (chunk) => {
+        const text = chunk.toString("utf8").trim();
+        if (text) {
+          text.split(/\r?\n/).filter(Boolean).slice(0, 8).forEach((line) => {
+            appendLog(project, `codex err: ${line.slice(0, 1000)}`);
+          });
+        }
+      });
+      child.on("close", (code) => {
+        if (settled) return;
+        clearTimeout(timer);
         settled = true;
-      }
-    }, CODEX_TIMEOUT_MS);
-
-    child.stdin.on("error", () => {});
-    child.stdin.end(prompt);
-
-    child.stdout.on("data", (chunk) => {
-      const text = chunk.toString("utf8").trim();
-      if (text) {
-        text.split(/\r?\n/).filter(Boolean).slice(0, 8).forEach((line) => {
-          appendLog(project, `codex: ${line.slice(0, 1000)}`);
-        });
-      }
+        const message = code === 0
+          ? "Codex CLIの反映が完了しました。"
+          : `Codex CLIが終了しました。exit=${code}。ローカル生成結果を表示します。`;
+        appendLog(project, message).then(resolve);
+      });
     });
-    child.stderr.on("data", (chunk) => {
-      const text = chunk.toString("utf8").trim();
-      if (text) {
-        text.split(/\r?\n/).filter(Boolean).slice(0, 8).forEach((line) => {
-          appendLog(project, `codex err: ${line.slice(0, 1000)}`);
-        });
-      }
-    });
-    child.on("close", (code) => {
-      if (settled) return;
-      clearTimeout(timer);
-      settled = true;
-      const message = code === 0
-        ? "Codex CLIの反映が完了しました。"
-        : `Codex CLIが終了しました。exit=${code}。ローカル生成結果を表示します。`;
-      appendLog(project, message).then(resolve);
-    });
-  });
+  } finally {
+    await fsp.rm(codexHome, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 async function runProjectJob(projectId) {
