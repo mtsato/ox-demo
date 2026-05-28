@@ -15,6 +15,12 @@ curl -X POST https://demo.ox-ai-app.com/api/deploy \
 OX_DEPLOY_TOKEN=... ./deploy/trigger-public-deploy.sh main
 ```
 
+ローカルに `.deploy.env` がある場合は、スクリプトが自動で読み込む。
+
+```bash
+./deploy/trigger-public-deploy.sh main
+```
+
 状態確認:
 
 ```bash
