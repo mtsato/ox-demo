@@ -104,16 +104,19 @@ if ! command -v codex >/dev/null 2>&1; then
 fi
 
 set +e
-timeout "${OX_CODEX_WORKER_TIMEOUT_SECONDS:-180}s" env \
-  HOME=/home/sato \
-  CODEX_HOME="${codex_home}" \
-  codex exec \
-    --sandbox workspace-write \
-    --skip-git-repo-check \
-    --json \
-    --output-last-message "${app_dir}/codex-summary.md" \
-    - \
-  < "${prompt_file}" \
+(
+  cd "${app_dir}"
+  timeout "${OX_CODEX_WORKER_TIMEOUT_SECONDS:-180}s" env \
+    HOME=/home/sato \
+    CODEX_HOME="${codex_home}" \
+    codex exec \
+      --sandbox workspace-write \
+      --skip-git-repo-check \
+      --json \
+      --output-last-message "codex-summary.md" \
+      - \
+    < "prompt.md"
+) \
   > >(while IFS= read -r line; do append_log "${log_file}" "${line}"; done) \
   2> >(while IFS= read -r line; do append_log "${log_file}" "${line}"; done)
 status=$?
