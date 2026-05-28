@@ -1275,6 +1275,9 @@ function renderJobArea(project, projectId = state.activeProjectId) {
   ];
   areas.forEach((area) => {
     area.innerHTML = htmlText;
+    area.querySelectorAll(".live-log ol").forEach((list) => {
+      list.scrollTop = list.scrollHeight;
+    });
   });
 }
 
