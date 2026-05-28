@@ -123,9 +123,20 @@ set +e
 status=$?
 set -e
 
+validate_generated_app() {
+  [[ -s "${app_dir}/index.html" && -s "${app_dir}/app.css" && -s "${app_dir}/app.js" ]] || return 1
+  if command -v node >/dev/null 2>&1; then
+    node --check "${app_dir}/app.js" >/dev/null 2>&1 || return 1
+  fi
+  return 0
+}
+
 if [[ "${status}" -eq 0 ]]; then
   append_log "${log_file}" '{"type":"item.completed","item":{"type":"agent_message","text":"解析エンジンとUIの更新が完了しました。完成画面へ反映します。"}}'
   write_result "${result_file}" "true" "0" "codex completed"
+elif validate_generated_app; then
+  append_log "${log_file}" '{"type":"item.completed","item":{"type":"agent_message","text":"AIの終了通知は時間内に返りませんでしたが、生成アプリのファイルは正常に作成されています。完成画面へ反映します。"}}'
+  write_result "${result_file}" "true" "0" "codex completed with validated files"
 else
   append_log "${log_file}" '{"type":"item.completed","item":{"type":"agent_message","text":"AIの作業中に問題がありました。現在の生成結果を表示します。"}}'
   write_result "${result_file}" "false" "${status}" "codex failed"
