@@ -1867,8 +1867,7 @@ async function runCodexIfAvailable(project, appDir) {
     "exec",
     "--sandbox",
     "workspace-write",
-    "--ask-for-approval",
-    "never",
+    "--skip-git-repo-check",
     "--json",
     "--output-last-message",
     path.join(appDir, "codex-summary.md")
