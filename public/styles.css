@@ -2247,6 +2247,36 @@ p {
   color: #fff;
 }
 
+.example-chips .free-chip {
+  border-color: #0b3d78;
+  background: #fff;
+  color: var(--teal-dark);
+}
+
+.example-chips .free-chip.active {
+  background: var(--teal-dark);
+  color: #fff;
+}
+
+.free-create-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.free-create-panel .field:first-child {
+  grid-column: 1 / -1;
+}
+
+.free-create-panel input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 12px;
+  font: inherit;
+  background: #fff;
+}
+
 .big-prompt {
   min-height: 180px;
   font-size: 16px;
@@ -2605,6 +2635,7 @@ p {
   .gen-flow-preview,
   .consult-mock,
   .consult-direction-grid,
+  .free-create-panel,
   .ts-stats,
   .frame-metrics,
   .train-pipeline,

@@ -37,28 +37,53 @@ const statusLabel = {
 
 const generativeExamples = [
   {
+    id: "meeting-record",
     label: "打合せ記録簿",
+    title: "打合せ記録簿作成アプリ",
+    input: "議事録、会議メモ、音声文字起こし",
+    output: "協議事項、指示事項、回答・対応方針、未確認事項、Wordで開ける記録簿",
     prompt: "議事録、会議メモ、音声文字起こしを入力すると、行政向けの打合せ記録簿を作成する業務アプリ。協議事項、指示事項、回答・対応方針、未確認事項を明確に分け、発注者に提出しやすい文体へ整える。ドラッグアンドドロップで議事録を読み込み、生成結果を画面で確認し、Wordで開ける記録簿ファイルとしてダウンロードできるようにする。"
   },
   {
+    id: "workplan",
     label: "業務計画書",
+    title: "業務計画書ドラフト作成アプリ",
+    input: "特記仕様書、過去の業務計画書、現場条件メモ",
+    output: "章立て、実施方針、工程、体制、照査ポイント、顧客確認事項",
     prompt: "特記仕様書、過去の業務計画書、現場条件メモを入力すると、業務条件を抽出し、業務計画書の章立て、実施方針、工程、実施体制、照査ポイント、顧客確認事項を1画面で生成する業務アプリ。左に入力資料、中央に抽出条件、右に計画書ドラフトと確認事項を表示し、Wordに貼り付けやすい文章で出力する。"
   },
   {
+    id: "todo",
     label: "議事録ToDo",
+    title: "議事録ToDo整理アプリ",
+    input: "会議メモ、音声文字起こし、配布資料",
+    output: "要点、決定事項、担当者別ToDo、期限、未確認事項、次回確認メール",
     prompt: "会議メモ、音声文字起こし、配布資料を入力すると、議題別の要点、決定事項、担当者別ToDo、期限、未確認事項、次回確認メールを生成するアプリ。発言メモをそのまま貼っても、業務で使える議事録形式に整え、抜け漏れがある項目は確認リストとして分けて表示する。"
   },
   {
+    id: "inspection-report",
     label: "点検報告書",
+    title: "点検報告書ドラフト作成アプリ",
+    input: "点検写真メモ、損傷位置、過年度コメント",
+    output: "損傷区分、写真台帳コメント、健全性所見、補修要否、報告書本文、不足確認事項",
     prompt: "点検写真メモ、損傷位置、過年度コメントを入力すると、損傷区分、写真台帳コメント、健全性の所見、補修要否、報告書本文の下書き、不足確認事項を生成するアプリ。入力欄、写真メモ一覧、AI所見、報告書ドラフト、確認チェックリストを1画面で扱えるようにする。"
   },
   {
+    id: "proposal",
     label: "提案書",
+    title: "AI活用提案書作成アプリ",
+    input: "顧客からの相談内容、対象現場、保有データ、制約条件",
+    output: "課題整理、AI活用方針、PoC案、必要データ、スケジュール、提案メール",
     prompt: "顧客からの相談内容、対象現場、保有データ、制約条件を入力すると、課題整理、AI活用方針、PoC案、必要データ、概算スケジュール、体制、提案メール文面を生成するアプリ。営業担当がその場で提案骨子を確認し、社内相談に回せる粒度で出力する。"
   },
   {
-    label: "自由記述",
-    prompt: "入力ファイルやテキストを受け取り、必要な処理を行い、業務でそのまま使える成果物を出力するアプリ。入力、処理、出力、確認事項が1画面で分かるようにし、利用者が追加指示で改善できる構成にする。"
+    id: "free",
+    label: "フリー作成",
+    title: "",
+    input: "",
+    output: "",
+    prompt: "",
+    free: true
   }
 ];
 
@@ -461,10 +486,19 @@ function renderBuilder(container) {
   wireAnnotationCanvas();
   document.querySelectorAll("[data-example]").forEach((button) => {
     button.addEventListener("click", () => {
-      const prompt = document.querySelector(".big-prompt");
+      const prompt = document.querySelector("[data-generative-prompt]");
+      const title = document.querySelector("[data-generative-title]");
+      const input = document.querySelector("[data-generative-input]");
+      const output = document.querySelector("[data-generative-output]");
+      const kind = document.querySelector("[data-generative-kind]");
       if (prompt) prompt.value = button.dataset.example || "";
+      if (title) title.value = button.dataset.exampleTitle || "";
+      if (input) input.value = button.dataset.exampleInput || "";
+      if (output) output.value = button.dataset.exampleOutput || "";
+      if (kind) kind.value = button.dataset.exampleKind || "";
       document.querySelectorAll("[data-example]").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
+      if (button.dataset.exampleFree === "true" && prompt) prompt.focus();
     });
   });
   document.querySelectorAll("[data-consult-type]").forEach((button) => {
@@ -1303,24 +1337,37 @@ function specializedExperience(template) {
 }
 
 function generativeForm() {
+  const first = generativeExamples[0];
   return html`
     <p class="eyebrow">生成AI</p>
     <h2>生成AI活用アプリを作る</h2>
-    <p class="lead">テンプレートを選ぶか、自由に指示を書きます。</p>
+    <p class="lead">テンプレートを選ぶか、フリー作成で入力と出力をそのまま指定します。</p>
     <section class="simple-generator">
       <div class="example-chips">
-        ${generativeExamples.map((item, index) => `<button type="button" class="${index === 0 ? "active" : ""}" data-example="${escapeHtml(item.prompt)}">${escapeHtml(item.label)}</button>`).join("")}
+        ${generativeExamples.map((item, index) => `<button type="button" class="${index === 0 ? "active" : ""} ${item.free ? "free-chip" : ""}" data-example="${escapeHtml(item.prompt)}" data-example-kind="${escapeHtml(item.id)}" data-example-title="${escapeHtml(item.title)}" data-example-input="${escapeHtml(item.input)}" data-example-output="${escapeHtml(item.output)}" data-example-free="${item.free ? "true" : "false"}">${escapeHtml(item.label)}</button>`).join("")}
+      </div>
+      <input type="hidden" name="generativeKind" data-generative-kind value="${escapeHtml(first.id)}">
+      <div class="free-create-panel">
+        <label class="field">
+          <span>アプリ名</span>
+          <input name="title" data-generative-title value="${escapeHtml(first.title)}" placeholder="例：打合せ記録簿作成アプリ">
+        </label>
+        <label class="field">
+          <span>入力</span>
+          <input name="inputDescription" data-generative-input value="${escapeHtml(first.input)}" placeholder="例：議事録PDF、Excel点検表、CSV、写真メモ">
+        </label>
+        <label class="field">
+          <span>出力</span>
+          <input name="outputDescription" data-generative-output value="${escapeHtml(first.output)}" placeholder="例：記録簿、チェック表、報告書、メール文面、ダウンロードファイル">
+        </label>
       </div>
       <label class="field">
-        <span>指示文</span>
-        <textarea name="instruction" class="big-prompt">${escapeHtml(generativeExamples[0].prompt)}</textarea>
+        <span>やりたいこと</span>
+        <textarea name="instruction" class="big-prompt" data-generative-prompt placeholder="例：Excelの点検表を入力すると、異常箇所を整理し、管理者向けの確認表と報告メールを出力するアプリを作りたい。">${escapeHtml(first.prompt)}</textarea>
       </label>
-      <input type="hidden" name="title" value="生成AI業務アプリ">
-      <input type="hidden" name="inputDescription" value="アップロード資料または入力テキスト">
-      <input type="hidden" name="outputDescription" value="業務で使える下書き、要点、確認事項を生成">
       <div class="gen-summary">
         <strong>この生成AIアプリがすること</strong>
-        <p>生成AI活用の指示から作成した、すぐ試せる業務アプリです。</p>
+        <p>入力ファイルやテキストを受け取り、指定した処理を行い、業務で使える成果物を出力します。</p>
       </div>
       <div class="gen-flow-preview">
         <div><span>入力</span><strong>資料・メモ・CSV</strong></div>
@@ -1660,12 +1707,17 @@ async function submitProject(event) {
   const hasFiles = Array.from(form.querySelectorAll('input[type="file"]')).some((input) => input.files && input.files.length > 0);
   if (hasFiles) data.set("dataMode", "upload");
   if (submitAiType === "generative") {
-    const instruction = String(data.get("instruction") || "").trim() || generativeExamples[0].prompt;
+    const instruction = String(data.get("instruction") || "").trim() || "入力ファイルやテキストを受け取り、必要な処理を行い、業務で使える成果物を出力する生成AI活用アプリを作る。";
+    const currentTitle = String(data.get("title") || "").trim();
+    const inputDescription = String(data.get("inputDescription") || "").trim();
+    const outputDescription = String(data.get("outputDescription") || "").trim();
     data.set("instruction", instruction);
-    if (mode !== "consultation") data.set("title", instruction.slice(0, 30) + (instruction.length > 30 ? "..." : ""));
+    if (mode !== "consultation" && !currentTitle) {
+      data.set("title", instruction.slice(0, 30) + (instruction.length > 30 ? "..." : ""));
+    }
     if (mode !== "consultation") {
-      data.set("inputDescription", "アップロード資料または入力テキスト");
-      data.set("outputDescription", "業務で使える下書き、要点、確認事項を生成");
+      data.set("inputDescription", inputDescription || "アップロード資料または入力テキスト");
+      data.set("outputDescription", outputDescription || "業務で使える下書き、要点、確認事項を生成");
     }
   }
   if (submitAiType === "specialized") {

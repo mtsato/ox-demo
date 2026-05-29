@@ -390,9 +390,18 @@ function defaultTitle(fields, chosen) {
   return "生成AI活用プロトタイプ";
 }
 
+function compactList(value, fallback) {
+  const items = String(value || "")
+    .split(/[、,\n/・]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return (items.length ? items : fallback).slice(0, 5);
+}
+
 function generativeBlueprint(project) {
   const text = `${project.title} ${project.instruction} ${project.inputDescription} ${project.outputDescription}`;
-  if (/打合せ記録簿|打ち合わせ記録簿|打合せ記録|協議|指示事項|行政|発注者|議事録/i.test(text)) {
+  const forceFree = project.generativeKind === "free";
+  if (!forceFree && /打合せ記録簿|打ち合わせ記録簿|打合せ記録|協議|指示事項|行政|発注者|議事録/i.test(text)) {
     return {
       kind: "meeting_record",
       name: "行政向け打合せ記録簿作成アプリ",
@@ -404,7 +413,7 @@ function generativeBlueprint(project) {
       downloadName: "打合せ記録簿.doc"
     };
   }
-  if (/会議|todo|ToDo/i.test(text)) {
+  if (!forceFree && /会議|todo|ToDo/i.test(text)) {
     return {
       kind: "meeting_minutes",
       name: "議事録・ToDo整理アプリ",
@@ -415,7 +424,7 @@ function generativeBlueprint(project) {
       table: [["佐藤", "データ候補を整理", "来週金曜"], ["山田", "速報文テンプレート確認", "次回会議前"], ["OX", "デモ画面を改善", "今週中"]]
     };
   }
-  if (/点検|写真|損傷|報告/i.test(text)) {
+  if (!forceFree && /点検|写真|損傷|報告/i.test(text)) {
     return {
       kind: "inspection_report",
       name: "点検報告書ドラフトアプリ",
@@ -426,7 +435,7 @@ function generativeBlueprint(project) {
       table: [["ひび割れ", "要記録", "幅・延長を確認"], ["位置", "要確認", "P2付近に反映"], ["次回確認", "優先", "同一角度で再撮影"]]
     };
   }
-  if (/提案|PoC|顧客|相談/i.test(text)) {
+  if (!forceFree && /提案|PoC|顧客|相談/i.test(text)) {
     return {
       kind: "proposal",
       name: "提案方針・PoC案作成アプリ",
@@ -437,14 +446,35 @@ function generativeBlueprint(project) {
       table: [["Step 1", "データ確認", "2週間"], ["Step 2", "プロトタイプ作成", "3週間"], ["Step 3", "現場評価", "2週間"]]
     };
   }
+  if (!forceFree && /業務計画|計画書|特記仕様|仕様書|実施方針|工程|体制/i.test(text)) {
+    return {
+      kind: "workplan",
+      name: "業務計画書ドラフト作成アプリ",
+      inputLabel: "特記仕様書 / 過去計画書",
+      sampleInput: "業務名：斜面監視調査。目的：降雨時の変状把握。条件：監視カメラ、雨量計、変位計を使用。成果：月報、速報、最終報告書。",
+      outputs: ["章立て", "実施方針", "工程・体制", "確認事項"],
+      primaryOutput: "本業務は、監視カメラ画像と計測データを統合し、降雨時の斜面変状を早期把握することを目的とする。",
+      table: [["1", "業務概要", "目的・対象・前提条件"], ["2", "実施方針", "監視・判定・報告"], ["3", "工程体制", "役割・頻度・成果物"]]
+    };
+  }
+
+  const title = project.title && !/^生成AI業務アプリ$/.test(project.title)
+    ? project.title
+    : "フリー作成 生成AI業務アプリ";
+  const inputLabel = project.inputDescription || "入力ファイル / テキスト";
+  const outputDescription = project.outputDescription || "業務で使える成果物";
+  const outputs = compactList(outputDescription, ["処理結果", "確認事項", "成果物", "ダウンロード"]);
+  const processSummary = project.instruction
+    ? project.instruction.replace(/\s+/g, " ").slice(0, 120)
+    : "入力内容を読み取り、業務で使える形に整理して出力します。";
   return {
-    kind: "workplan",
-    name: "業務計画書ドラフト作成アプリ",
-    inputLabel: "特記仕様書 / 過去計画書",
-    sampleInput: "業務名：斜面監視調査。目的：降雨時の変状把握。条件：監視カメラ、雨量計、変位計を使用。成果：月報、速報、最終報告書。",
-    outputs: ["章立て", "実施方針", "工程・体制", "確認事項"],
-    primaryOutput: "本業務は、監視カメラ画像と計測データを統合し、降雨時の斜面変状を早期把握することを目的とする。",
-    table: [["1", "業務概要", "目的・対象・前提条件"], ["2", "実施方針", "監視・判定・報告"], ["3", "工程体制", "役割・頻度・成果物"]]
+    kind: "free_generative",
+    name: title,
+    inputLabel,
+    sampleInput: `${inputLabel}をここにドラッグ&ドロップ、または貼り付けます。`,
+    outputs,
+    primaryOutput: `${inputLabel}を取り込み、${outputDescription}を生成します。`,
+    table: [["入力", inputLabel, "ドラッグ&ドロップまたは貼り付け"], ["処理", processSummary, "生成AIで整理"], ["出力", outputDescription, "画面確認・ダウンロード"]]
   };
 }
 
@@ -489,6 +519,7 @@ ${project.title}
 
 ## AI種別
 ${project.aiType === "specialized" ? "特化型AI開発" : "生成AI活用"}
+${project.generativeKind ? `\n## 生成AI作成モード\n${project.generativeKind === "free" ? "フリー作成" : project.generativeKind}` : ""}
 
 ## 参加者の指示
 ${project.instruction || "未入力"}
@@ -543,6 +574,7 @@ ${improvementText || "なし"}
 - 完成アプリ内の「AIに改良を指示」フォームは削除しない。改良時も画面内から追加指示を出せる状態を維持する。
 - 生成AI活用の場合は、ファイルを入力し、処理し、成果物を出力する流れを強調する。
 - 生成AI活用の場合は、推奨デモ設計に沿って、入力欄、実行ボタン、出力カード、表、確認事項、コピーしやすい文面を最初から配置する。
+- 生成AI活用のフリー作成の場合は、参加者が書いた「入力」「出力」「やりたいこと」を最優先し、既存テンプレート名に無理に寄せない。
 - 打合せ記録簿アプリの場合は、ドラッグ&ドロップ、協議事項と指示事項の分離、行政提出向け文体、ダウンロードボタンを必ず入れる。
 - 特化型AIの場合は、最終的にエンドユーザーが使う監視・点検・予測画面として成立させる。
 - 特化型AIの場合は、参考画像の確認、教師データ作成、簡易学習、完成モニタリング画面の流れが伝わるようにする。
@@ -1111,6 +1143,9 @@ function generatedIndex(project) {
     ? `${specializedTitle}の完成デモです。最新データを取り込み、AI判定・予測・速報文を業務画面で確認できます。`
     : "AI判定と出力を確認できる業務デモです。";
   const generativeSummary = "生成AI活用の指示から作成した、すぐ試せる業務アプリです。";
+  const generativeDataLabel = project.aiType === "generative"
+    ? (project.inputDescription || dataLabel || "入力データ")
+    : dataLabel;
   const showPersonMarker = profile.scenario === "intrusion" && !profile.consultationAsset;
   const imageSpecText = (project.imageGenerationSpec || "相談内容に合う現場写真を生成します。").replace(/^imagegen:\s*/i, "");
   const specializedTag = needsGeneratedImage ? "相談AI" : (primaryTemplate?.tag || "特化型AI");
@@ -1215,8 +1250,8 @@ function generatedIndex(project) {
           <span>${escapeHtml(blueprint.inputLabel)}</span>
           <label class="file-drop" id="fileDrop">
             <input id="sourceFile" type="file" accept=".txt,.md,.csv,.log,.doc,.docx,.pdf">
-            <strong>議事録ファイルをドロップ</strong>
-            <small>テキスト化済み資料、議事メモ、文字起こしを取り込みます</small>
+            <strong>${escapeHtml(blueprint.inputLabel)}をドロップ</strong>
+            <small>ファイルを入れるか、下の入力欄に貼り付けます</small>
           </label>
           <textarea id="demoPrompt">${escapeHtml(samplePreview || blueprint.sampleInput)}</textarea>
         </section>
@@ -1271,7 +1306,7 @@ function generatedIndex(project) {
         <p>${project.aiType === "specialized" ? escapeHtml(primaryTemplate?.description || "業務データから必要な判断を支援するAI処理を作ります。") : escapeHtml(generativeSummary)}</p>
         <dl>
           <dt>使うデータ</dt>
-          <dd>${escapeHtml(dataLabel || project.inputDescription || "入力データ")}</dd>
+          <dd>${escapeHtml(generativeDataLabel || "入力データ")}</dd>
           <dt>出力</dt>
           <dd>${escapeHtml(project.outputDescription || "業務で確認できる画面と文章")}</dd>
         </dl>
@@ -2766,6 +2801,7 @@ async function handleCreateProject(req, res, session) {
     title: defaultTitle(fields, chosen),
     aiType: fields.aiType === "specialized" ? "specialized" : "generative",
     selectedTemplateIds: rawIds,
+    generativeKind: (fields.generativeKind || "").trim().slice(0, 80),
     instruction: (fields.instruction || "").trim(),
     dataMode: fields.dataMode === "upload" ? "upload" : "default",
     timeseriesDataset: ["slope", "river", "road"].includes(fields.timeseriesDataset) ? fields.timeseriesDataset : "slope",
