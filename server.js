@@ -469,6 +469,12 @@ function buildPrompt(project) {
   const annotationText = project.annotationSummary
     ? `## 体験画面で作成した教師データ\n${project.annotationSummary}\n`
     : "";
+  const demoDataText = [project.consultationDataSpec ? `- デモデータ仕様: ${project.consultationDataSpec}` : "",
+    project.imageGenerationSpec ? `- 画像生成仕様: ${project.imageGenerationSpec}` : "",
+    project.maskSpec ? `- AI判定仕様: ${project.maskSpec}` : "",
+    project.consultationAsset ? `- 参考画像アセット: ${project.consultationAsset}` : ""]
+    .filter(Boolean)
+    .join("\n");
 
   return `# OX AI Workshop Builder Job
 
@@ -498,6 +504,7 @@ ${project.outputDescription || "未入力"}
 
 ${consultationText}
 ${annotationText}
+${demoDataText ? `## 相談モードのデモデータ設計\n${demoDataText}\n` : ""}
 ## 選択テンプレート
 ${templateText || "なし"}
 
@@ -522,7 +529,8 @@ ${improvementText || "なし"}
 ## 変更方針
 - ワークショップ参加者が「自分の業務で使えそう」と感じる画面にする。
 - 相談モードで作成された場合は、参加者の曖昧な相談をそのまま説明せず、入力データ、AI判定、完成画面に翻訳して見せる。
-- 相談モードで作成された場合は、デモデータは1ケースでよい。画像系はリアルな現場画像1枚と検知結果、時系列系は1セットの計測データと予測結果、文書系はサンプル入力1件と成果物を用意する。
+- 相談モードで作成された場合は、デモデータは1ケースでよい。画像系は相談内容に合わせて imagegen で生成する想定のリアルな現場画像1枚と検知結果、時系列系は地点・単位・閾値が分かる1セットの計測データと予測結果、文書系はサンプル入力1件と成果物を用意する。
+- 相談モードの画像系で「参考画像アセット」がある場合は、それを完成画面の主画像として使い、画像生成仕様とAI判定仕様に合う検知マスク・数値・通知文を作る。
 - 特化型AIの相談では、可能な限り「本当にAIで検知・予測している」ように見える検知枠、セグメンテーション、スコア、根拠、通知文を整える。雑な合成や意味不明なラベルを避ける。
 - 入力、処理、出力、確認、改善指示の流れを明確にする。
 - 操作できるボタンやタブを最低1つ以上置く。
@@ -669,7 +677,7 @@ function specializedProfile(templateId) {
 function specializedProfileForProject(templateId, project = {}) {
   const text = `${project.title || ""} ${project.instruction || ""} ${project.inputDescription || ""} ${project.outputDescription || ""}`;
   if (templateId === "river-monitoring" && /侵入|立入|立ち入り|人|人物|CCTV|河川敷|危険区域/i.test(text)) {
-    return {
+    return applyConsultationDemoSpec({
       ...specializedProfile("river-monitoring"),
       scenario: "intrusion",
       appName: "河川CCTV侵入検知AI",
@@ -694,9 +702,9 @@ function specializedProfileForProject(templateId, project = {}) {
       series: [0.04, 0.08, 0.22, 0.57, 0.78, 0.91],
       threshold: 0.7,
       report: "R-12河川CCTVで、危険区域内に人の侵入を検知しました。水位上昇中のため、現地確認と注意喚起を推奨します。"
-    };
+    }, project);
   }
-  return specializedProfile(templateId);
+  return applyConsultationDemoSpec(specializedProfile(templateId), project);
 }
 
 function timeseriesVariant(project = {}) {
@@ -751,6 +759,21 @@ function timeseriesVariant(project = {}) {
     report: goal === "anomaly"
       ? `${dataset.location}の現在値を異常検知モデルで評価しました。${dataset.report}`
       : `${dataset.location}の現在値から24時間先までの推移を予測しました。${dataset.report}`
+  };
+}
+
+function applyConsultationDemoSpec(profile, project = {}) {
+  const asset = String(project.consultationAsset || "").trim();
+  if (!asset && !project.imageGenerationSpec && !project.maskSpec && !project.consultationDataSpec) return profile;
+  return {
+    ...profile,
+    consultationAsset: asset,
+    imagePrompt: project.imageGenerationSpec || profile.imagePrompt,
+    dataSpec: project.consultationDataSpec || "",
+    maskSpec: project.maskSpec || "",
+    report: project.maskSpec
+      ? `${profile.report} ${project.maskSpec}`
+      : profile.report
   };
 }
 
@@ -866,14 +889,14 @@ function intrusionRegions(frameIndex) {
 function imageFrameStates(templateId, profile) {
   const labels = profile.frames.length ? profile.frames : ["1", "2", "3", "4", "5", "6"];
   const frame = (index, risk, metrics, regions, result, extra = {}) => ({
+    ...extra,
     frame: labels[index] || `フレーム${index + 1}`,
     frameIndex: index,
-    image: monitoringFrameSrc(templateId, index),
+    image: profile.consultationAsset || extra.image || monitoringFrameSrc(templateId, index),
     risk,
     metrics,
     regions,
-    result,
-    ...extra
+    result
   });
   if (templateId === "slope-monitoring") {
     return [
@@ -2400,6 +2423,10 @@ async function handleCreateProject(req, res, session) {
     inputDescription: (fields.inputDescription || "").trim(),
     outputDescription: (fields.outputDescription || "").trim(),
     consultationPlan: (fields.consultationPlan || "").trim().slice(0, 4000),
+    consultationAsset: (fields.consultationAsset || "").trim().slice(0, 500),
+    consultationDataSpec: (fields.consultationDataSpec || "").trim().slice(0, 4000),
+    imageGenerationSpec: (fields.imageGenerationSpec || "").trim().slice(0, 4000),
+    maskSpec: (fields.maskSpec || "").trim().slice(0, 4000),
     annotationSummary: (fields.annotationSummary || "").trim().slice(0, 4000),
     files: savedFiles,
     status: "queued",

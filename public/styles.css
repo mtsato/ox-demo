@@ -2044,8 +2044,14 @@ p {
   padding: 12px;
 }
 
+.consult-preview-card.compact {
+  padding: 10px 12px;
+}
+
 .consult-preview-card p {
   margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .consult-direction-grid {
@@ -2101,6 +2107,12 @@ p {
   background: linear-gradient(180deg, #9fb4c8 0 26%, #c6d1dc 26% 36%, #7d8994 36% 100%);
 }
 
+.mock-camera.photo {
+  min-height: 220px;
+  background-size: cover;
+  background-position: center;
+}
+
 .mock-river {
   position: absolute;
   left: -5%;
@@ -2144,6 +2156,16 @@ p {
   padding: 44px 12px 6px;
   font-size: 12px;
   font-weight: 900;
+}
+
+.mock-camera.photo .mock-detect {
+  right: 10px;
+  bottom: 10px;
+  max-width: 45%;
+  padding: 8px 10px;
+  border-color: #ffdf5d;
+  background: rgba(16, 32, 51, 0.78);
+  box-shadow: 0 0 0 999px rgba(29, 99, 183, 0.08);
 }
 
 .mock-result {

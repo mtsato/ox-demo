@@ -100,6 +100,18 @@ const consultationScenarios = [
     frames: ["平常", "降雨", "変化", "拡大", "警戒", "現在"]
   },
   {
+    id: "other-specialized",
+    type: "specialized",
+    title: "その他",
+    tag: "自由相談",
+    templateId: "river-monitoring",
+    dataset: "custom",
+    goal: "detection",
+    prompt: "",
+    output: "相談内容に合わせたデモ画像、AI判定、完成画面",
+    frames: ["相談", "画像生成", "AI判定", "完成画面"]
+  },
+  {
     id: "meeting-record",
     type: "generative",
     title: "打合せ記録簿作成",
@@ -118,6 +130,16 @@ const consultationScenarios = [
     prompt: "顧客からの相談メモを入力すると、AI活用の課題整理、PoC案、必要データ、スケジュール、提案メールを作る業務アプリを作りたいです。土木分野のAI相談を、支社の担当者がすぐ社内共有できる形にしてください。",
     output: "課題整理、PoC案、必要データ、提案メール",
     frames: ["相談", "課題", "PoC", "提案"]
+  },
+  {
+    id: "other-generative",
+    type: "generative",
+    title: "その他",
+    tag: "自由相談",
+    templateId: "",
+    prompt: "",
+    output: "相談内容に合わせた入力、生成処理、成果物",
+    frames: ["相談", "整理", "生成", "完成"]
   }
 ];
 
@@ -450,7 +472,7 @@ function renderBuilder(container) {
       state.consultType = button.dataset.consultType;
       const next = consultationScenarios.find((item) => item.type === state.consultType);
       if (next) state.consultScenario = next.id;
-      if (next) state.consultText = next.prompt;
+      if (next) state.consultText = next.prompt || "";
       renderApp();
     });
   });
@@ -460,7 +482,7 @@ function renderBuilder(container) {
       if (!scenario) return;
       state.consultScenario = scenario.id;
       state.consultType = scenario.type;
-      state.consultText = scenario.prompt;
+      state.consultText = scenario.prompt || "";
       renderApp();
     });
   });
@@ -1320,12 +1342,67 @@ function currentConsultScenario() {
 }
 
 function consultText() {
-  return state.consultText || currentConsultScenario().prompt;
+  const scenario = currentConsultScenario();
+  if (scenario.id?.startsWith("other-")) return state.consultText;
+  return state.consultText || scenario.prompt;
+}
+
+function consultationDemoSpec({ templateId, intrusion, flood, crack, slope, title, normalized }) {
+  if (templateId === "timeseries-anomaly") {
+    const river = /河川|洪水|水位|雨量|越水|氾濫/i.test(normalized);
+    const road = /道路|冠水|アンダーパス|通行/i.test(normalized);
+    const dataset = road ? "road" : river ? "river" : "slope";
+    return {
+      asset: "",
+      dataSpec: dataset === "road"
+        ? "道路冠水水位 12時点。雨量、路面水位、排水稼働状態、通行注意ラインを含む。"
+        : dataset === "river"
+          ? "河川水位 12時点。雨量、水位、上昇速度、6h/24h予測、注意・警戒ラインを含む。"
+          : "地すべり計測 12時点。雨量、地下水位、変位速度、異常スコア、警戒ラインを含む。",
+      imageSpec: "時系列相談のため画像生成は必須ではない。代わりに観測地点図、センサー配置、実測線、予測レンジを生成する。",
+      maskSpec: "なし。現在値、予測レンジ、警戒ライン、アラート文の対応を明示する。",
+      dataset
+    };
+  }
+  if (intrusion) {
+    return {
+      asset: "/assets/consultation/river-intrusion.jpg",
+      dataSpec: "河川CCTV画像1枚。危険区域ポリゴン、人検知ボックス、滞在時間、信頼度、水位状況を含む。",
+      imageSpec: "imagegen: 雨天の日本の河川CCTV。増水した河川、護岸通路、水位標、危険区域内に入った人物1名をリアルに生成。UI文字なし。",
+      maskSpec: "人の矩形検知と危険区域の重なり判定。検知対象は人のみ。",
+      dataset: "intrusion"
+    };
+  }
+  if (flood) {
+    return {
+      asset: "/assets/consultation/road-flood.jpg",
+      dataSpec: "道路冠水画像1枚。冠水域マスク、路面水位、1時間雨量、通行注意ラインを含む。",
+      imageSpec: "imagegen: 雨天の日本の道路アンダーパス。水位標、濁った冠水、水が乾いた路面へ広がる境界をリアルに生成。UI文字なし。",
+      maskSpec: "冠水域だけを1ラベルでセグメンテーション。乾いた路面や壁面は含めない。",
+      dataset: "road"
+    };
+  }
+  if (crack) {
+    return {
+      asset: "/assets/consultation/concrete-crack.jpg",
+      dataSpec: "近接点検写真1枚。ひび割れポリライン、推定幅、延長、写真台帳コメントを含む。",
+      imageSpec: "imagegen: コンクリート構造物の近接点検写真。細い主ひび割れ1本と自然な分岐をリアルに生成。UI文字なし。",
+      maskSpec: "ひび割れだけを1ラベルで細線セグメンテーション。汚れや目地は除外する。",
+      dataset: "crack"
+    };
+  }
+  return {
+    asset: "/assets/consultation/slope-landslide.jpg",
+    dataSpec: "斜面監視画像1枚。地すべり領域マスク、24h雨量、累積変位、変位速度を含む。",
+    imageSpec: "imagegen: 豪雨後の日本の山腹斜面監視画像。森林斜面、管理道路、明瞭な地すべり裸地をリアルに生成。UI文字なし。",
+    maskSpec: "地すべり裸地だけを1ラベルでセグメンテーション。周辺植生と道路は除外する。",
+    dataset: slope ? "slope" : "custom"
+  };
 }
 
 function inferConsultPlan(text, preferredType = state.consultType, scenario = currentConsultScenario()) {
   const raw = String(text || "").trim();
-  const normalized = raw || scenario.prompt;
+  const normalized = raw || scenario.prompt || "";
   const isDocument = /議事|打合せ|打ち合わせ|記録簿|報告書|計画書|仕様書|提案|メール|要約|文章|文書|契約|照査|台帳|ダウンロード/i.test(normalized);
   const isTimeSeries = /水位|雨量|流量|地下水|変位|傾斜|センサー|計測|時系列|予測|forecast|異常|アラート|洪水|越水/i.test(normalized);
   const isImage = /画像|カメラ|CCTV|動画|写真|ドローン|ひび|亀裂|浸水|冠水|侵入|人物|人|地すべり|斜面|崩壊|検知/i.test(normalized);
@@ -1363,19 +1440,24 @@ function inferConsultPlan(text, preferredType = state.consultType, scenario = cu
   const templateId = intrusion || flood ? (isTimeSeries && !intrusion ? "timeseries-anomaly" : "river-monitoring") : crack ? "inspection-damage" : slope ? "slope-monitoring" : scenario.templateId || "river-monitoring";
   const dataset = flood && templateId === "timeseries-anomaly" ? "river" : slope ? "slope" : scenario.dataset || "river";
   const goal = /異常/.test(normalized) ? "anomaly" : "forecast";
+  const title = intrusion ? "河川CCTV侵入検知" : flood ? "水位・雨量 洪水アラート" : crack ? "ひび割れ検知" : slope ? "斜面監視AI" : scenario.title || "現場AIデモ";
+  const demoSpec = consultationDemoSpec({ templateId, intrusion, flood, crack, slope, title, normalized });
   return {
     type: "specialized",
     templateId,
-    dataset,
+    dataset: demoSpec.dataset || dataset,
     goal,
-    title: intrusion ? "河川CCTV侵入検知" : flood ? "水位・雨量 洪水アラート" : crack ? "ひび割れ検知" : slope ? "斜面監視AI" : scenario.title,
+    title,
     tag: intrusion ? "画像検知" : templateId === "timeseries-anomaly" ? "時系列予測" : crack ? "点検画像" : "現場AI",
     humanMode: "画像・センサーで判断するAI",
     inputDescription: intrusion ? "CCTVデモ画像1件" : templateId === "timeseries-anomaly" ? "計測データ1セット" : "現場デモ画像1件",
     output: intrusion ? "人の侵入検知、危険区域判定、現地確認アラート" : flood ? "水位・雨量の予測、洪水リスク、自治体向けアラート" : crack ? "ひび割れ検知、位置、点検コメント" : "AI検知結果、警戒判定、通知文",
-    dataPlan: intrusion ? "人が写ったCCTV画像を1件用意" : templateId === "timeseries-anomaly" ? "水位・雨量などの時系列を1セット用意" : "対象が分かる現場画像を1件用意",
+    dataPlan: demoSpec.dataSpec,
     screenPlan: intrusion ? "画像、検知枠、危険区域、アラート文" : templateId === "timeseries-anomaly" ? "現在値、予測線、警戒判定、通知文" : "画像、AI検知、根拠グラフ、通知文",
     checks: intrusion ? ["人を検知", "危険区域を判定", "現地確認文を出力"] : templateId === "timeseries-anomaly" ? ["現在値を表示", "予測を表示", "警戒文を出力"] : ["対象を検知", "根拠を表示", "通知文を出力"],
+    asset: demoSpec.asset,
+    imageSpec: demoSpec.imageSpec,
+    maskSpec: demoSpec.maskSpec,
     instructionFocus: "特化型AI。実データがなくても、相談内容に合うデモデータ1件と推論結果をアプリ内で用意し、完成した監視・点検コンソールとして見せる。"
   };
 }
@@ -1429,11 +1511,12 @@ function consultationPlanHtml(plan) {
       <p>${escapeHtml(plan.title)}として作ります。</p>
     </div>
     ${imageMock ? `
-      <div class="consult-mock cctv">
-        <div class="mock-camera">
-          <span class="mock-river"></span>
-          <span class="mock-bank"></span>
-          <span class="mock-person"></span>
+      <div class="consult-mock cctv ${plan.asset ? "with-photo" : ""}">
+        <div class="mock-camera ${plan.asset ? "photo" : ""}" ${plan.asset ? `style="background-image:linear-gradient(180deg,rgba(7,24,44,0.02),rgba(7,24,44,0.16)),url('${escapeHtml(plan.asset)}')"` : ""}>
+          ${plan.asset ? "" : `
+            <span class="mock-river"></span>
+            <span class="mock-bank"></span>
+            <span class="mock-person"></span>`}
           <span class="mock-detect">${escapeHtml(plan.checks[0] || "検知")}</span>
         </div>
         <div class="mock-result">
@@ -1441,6 +1524,8 @@ function consultationPlanHtml(plan) {
           <span>${escapeHtml(plan.screenPlan)}</span>
         </div>
       </div>` : consultChartSvg(chartScenario)}
+    ${plan.imageSpec ? `<div class="consult-preview-card compact"><span>画像生成</span><p>${escapeHtml(plan.imageSpec.replace(/^imagegen:\\s*/i, ""))}</p></div>` : ""}
+    ${plan.maskSpec ? `<div class="consult-preview-card compact"><span>AI判定</span><p>${escapeHtml(plan.maskSpec)}</p></div>` : ""}
     <div class="consult-direction-grid">
       <div><span>用意するもの</span><strong>${escapeHtml(plan.dataPlan)}</strong></div>
       <div><span>完成画面</span><strong>${escapeHtml(plan.screenPlan)}</strong></div>
@@ -1452,7 +1537,7 @@ function consultationPlanHtml(plan) {
 
 function consultationInstruction(plan, prompt) {
   const base = String(prompt || "").trim();
-  return `${base}
+  return `${base || "相談内容は未入力です。土木分野のAI活用相談として、参加者が試せる最小の完成アプリにしてください。"}
 
 相談内容が曖昧な場合でも、以下の方向性で補完して完成アプリにしてください。
 - 方向性: ${plan.humanMode}
@@ -1460,8 +1545,11 @@ function consultationInstruction(plan, prompt) {
 - デモデータ: ${plan.dataPlan}
 - 完成画面: ${plan.screenPlan}
 - 出力: ${plan.output}
+${plan.imageSpec ? `- 画像生成仕様: ${plan.imageSpec}` : ""}
+${plan.maskSpec ? `- AI判定仕様: ${plan.maskSpec}` : ""}
+${plan.asset ? `- 既定の参考画像: ${plan.asset}` : ""}
 
-相談モードなので、デモデータは1ケースで十分です。画像系なら「リアルな現場画像1枚と、そこに対応する検知結果」、時系列なら「水位・雨量などの1セットと予測結果」、文書系なら「サンプル入力1件と成果物」をアプリ内で自然に用意してください。
+相談モードなので、デモデータは1ケースで十分です。画像系なら相談内容に合わせて imagegen で生成する前提のリアルな現場画像1枚と、そこに対応する検知結果を用意してください。実行環境で画像生成ができない場合は、既定の参考画像を使い、画像生成仕様に合うようUI、検知マスク、数値、説明を調整してください。時系列なら「水位・雨量などの1セットと予測結果」、文書系なら「サンプル入力1件と成果物」をアプリ内で自然に用意してください。
 ユーザーはAIやITに詳しくない前提です。専門用語の説明を増やさず、入力、AI判定、完成結果が直感的に分かるUIにしてください。
 ${plan.instructionFocus}`;
 }
@@ -1537,8 +1625,15 @@ async function submitProject(event) {
       `アプリ案: ${plan.title}`,
       `デモデータ: ${plan.dataPlan}`,
       `完成画面: ${plan.screenPlan}`,
-      `確認ポイント: ${plan.checks.join(" / ")}`
+      `確認ポイント: ${plan.checks.join(" / ")}`,
+      plan.imageSpec ? `画像生成仕様: ${plan.imageSpec}` : "",
+      plan.maskSpec ? `AI判定仕様: ${plan.maskSpec}` : "",
+      plan.asset ? `参考画像: ${plan.asset}` : ""
     ].join("\n"));
+    data.set("consultationAsset", plan.asset || "");
+    data.set("consultationDataSpec", plan.dataPlan || "");
+    data.set("imageGenerationSpec", plan.imageSpec || "");
+    data.set("maskSpec", plan.maskSpec || "");
     data.set("dataMode", "default");
   }
   data.set("aiType", submitAiType);
