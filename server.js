@@ -531,6 +531,8 @@ ${improvementText || "なし"}
 - 相談モードで作成された場合は、参加者の曖昧な相談をそのまま説明せず、入力データ、AI判定、完成画面に翻訳して見せる。
 - 相談モードで作成された場合は、デモデータは1ケースでよい。画像系は相談内容に合わせて imagegen で生成する想定のリアルな現場画像1枚と検知結果、時系列系は地点・単位・閾値が分かる1セットの計測データと予測結果、文書系はサンプル入力1件と成果物を用意する。
 - 相談モードの画像系で「参考画像アセット」がある場合は、それを完成画面の主画像として使い、画像生成仕様とAI判定仕様に合う検知マスク・数値・通知文を作る。
+- 相談モードの画像系で参考画像アセットがない場合は、相談内容と合わない既存画像を使わない。画面には「画像生成仕様」「生成後に重ねるAI判定」を明示し、画像生成が必要な状態として自然に見せる。
+- 現場画像をCSS、SVG、絵文字、グラデーション、疑似イラストで作図しない。画像は必ず実画像アセット、アップロード画像、または imagegen で生成する想定の画像仕様として扱う。
 - 特化型AIの相談では、可能な限り「本当にAIで検知・予測している」ように見える検知枠、セグメンテーション、スコア、根拠、通知文を整える。雑な合成や意味不明なラベルを避ける。
 - 入力、処理、出力、確認、改善指示の流れを明確にする。
 - 操作できるボタンやタブを最低1つ以上置く。
@@ -538,6 +540,7 @@ ${improvementText || "なし"}
 - 完成アプリとして、開いた直後に主要な入力・結果・判定が見える構成にする。
 - 画面は「入力/データ」「AI処理結果」「業務出力」の3つのモジュールとして整理し、改良指示では関係するモジュールだけを変更する。
 - 改良時は既存の画面構成を大きく壊さず、レイアウト、文言、入力欄、結果カード、グラフ、判定根拠などを小さな単位で改善する。
+- 完成アプリ内の「AIに改良を指示」フォームは削除しない。改良時も画面内から追加指示を出せる状態を維持する。
 - 生成AI活用の場合は、ファイルを入力し、処理し、成果物を出力する流れを強調する。
 - 生成AI活用の場合は、推奨デモ設計に沿って、入力欄、実行ボタン、出力カード、表、確認事項、コピーしやすい文面を最初から配置する。
 - 打合せ記録簿アプリの場合は、ドラッグ&ドロップ、協議事項と指示事項の分離、行政提出向け文体、ダウンロードボタンを必ず入れる。
@@ -676,7 +679,9 @@ function specializedProfile(templateId) {
 
 function specializedProfileForProject(templateId, project = {}) {
   const text = `${project.title || ""} ${project.instruction || ""} ${project.inputDescription || ""} ${project.outputDescription || ""}`;
-  if (templateId === "river-monitoring" && /侵入|立入|立ち入り|人|人物|CCTV|河川敷|危険区域/i.test(text)) {
+  const humanIntrusion = /(人|人物|歩行者|作業員|立入|立ち入り|立ち入|人の侵入)/i.test(text)
+    && !/(車両|作業車|トラック|重機|船舶|船|クレーン|コンテナ)/i.test(text);
+  if (templateId === "river-monitoring" && humanIntrusion) {
     return applyConsultationDemoSpec({
       ...specializedProfile("river-monitoring"),
       scenario: "intrusion",
@@ -765,13 +770,27 @@ function timeseriesVariant(project = {}) {
 function applyConsultationDemoSpec(profile, project = {}) {
   const asset = String(project.consultationAsset || "").trim();
   if (!asset && !project.imageGenerationSpec && !project.maskSpec && !project.consultationDataSpec) return profile;
+  const customGeneratedImage = Boolean(!asset && project.imageGenerationSpec);
   return {
     ...profile,
     consultationAsset: asset,
+    needsGeneratedImage: customGeneratedImage,
+    appName: customGeneratedImage ? (project.title || "相談AIデモ").replace(/\s*デモ$/, "") : profile.appName,
+    outputTitle: customGeneratedImage ? "AI判定結果" : profile.outputTitle,
+    location: customGeneratedImage ? "相談内容に合わせた現場デモ" : profile.location,
+    metrics: customGeneratedImage
+      ? [
+          ["検知対象", "1ラベル", "相談内容に合わせる"],
+          ["判定スコア", "0.86", "確認要"],
+          ["出力", "通知文", "作成"]
+        ]
+      : profile.metrics,
     imagePrompt: project.imageGenerationSpec || profile.imagePrompt,
     dataSpec: project.consultationDataSpec || "",
     maskSpec: project.maskSpec || "",
-    report: project.maskSpec
+    report: customGeneratedImage
+      ? `${project.maskSpec || "相談内容に合わせた主要対象を1ラベルで検知します。"} 生成画像、検知結果、判定根拠、通知文を1画面で確認できるデモとして構成します。`
+      : project.maskSpec
       ? `${profile.report} ${project.maskSpec}`
       : profile.report
   };
@@ -886,7 +905,134 @@ function intrusionRegions(frameIndex) {
   return frames[frameIndex] || frames[5];
 }
 
+function consultationAssetRegions(templateId, profile) {
+  if (profile.scenario === "intrusion") {
+    return [segRegion("人", "M 81 57 L 88 57 L 88 82 L 81 82 Z", 79, 58)];
+  }
+  if (templateId === "inspection-damage") {
+    return [segRegion("ひび割れ", "M 58 0 C 58 13 56 25 57 37 C 59 48 57 60 58 73 C 59 85 58 94 59 100 M 58 72 C 50 77 40 82 29 86", 57, 18, false, "line")];
+  }
+  if (templateId === "slope-monitoring") {
+    return [segRegion("地すべり", "M 56 19 C 66 21 76 30 80 44 C 85 61 73 78 56 87 C 45 80 42 65 47 50 C 51 39 50 27 56 19 Z", 56, 32)];
+  }
+  return [segRegion("冠水域", "M 0 49 C 22 48 45 51 63 65 C 78 78 68 95 5 100 L 0 100 Z", 8, 70)];
+}
+
+function consultationAssetFrameStates(templateId, profile) {
+  const image = profile.consultationAsset;
+  const regions = consultationAssetRegions(templateId, profile);
+  if (profile.scenario === "intrusion") {
+    return [
+      {
+        frame: "現在",
+        frameIndex: 0,
+        image,
+        risk: "警戒",
+        metrics: [["検知人数", "1人", "危険区域内"], ["滞在時間", "2分30秒", "確認要"], ["信頼度", "0.91", "警戒"]],
+        regions,
+        result: profile.report
+      },
+      {
+        frame: "確認中",
+        frameIndex: 1,
+        image,
+        risk: "警戒",
+        metrics: [["検知人数", "1人", "継続"], ["危険区域", "重なりあり", "確認要"], ["信頼度", "0.93", "警戒"]],
+        regions,
+        result: "危険区域内の人物を継続検知しています。現地確認と注意喚起を推奨します。"
+      }
+    ];
+  }
+  if (templateId === "inspection-damage") {
+    return [
+      {
+        frame: "点検写真",
+        frameIndex: 0,
+        image,
+        risk: "注意",
+        metrics: [["検知本数", "1本", "要確認"], ["最大幅", "0.38 mm", "記録対象"], ["延長", "2.1 m", "台帳反映"]],
+        regions,
+        result: profile.report
+      },
+      {
+        frame: "報告反映",
+        frameIndex: 1,
+        image,
+        risk: "注意",
+        metrics: [["検知本数", "1本", "継続"], ["最大幅", "0.42 mm", "優先確認"], ["位置", "P2付近", "位置図反映"]],
+        regions,
+        result: "ひび割れ1本を細線で抽出しました。写真台帳と位置図へ反映します。"
+      }
+    ];
+  }
+  if (templateId === "slope-monitoring") {
+    return [
+      {
+        frame: "現在",
+        frameIndex: 0,
+        image,
+        risk: "警戒",
+        metrics: [["24h雨量", "168 mm", "警戒基準超過"], ["累積変位", "14.6 mm", "増加"], ["検知面積", "18%", "拡大傾向"]],
+        regions,
+        result: profile.report
+      },
+      {
+        frame: "速報",
+        frameIndex: 1,
+        image,
+        risk: "警戒",
+        metrics: [["24h雨量", "176 mm", "警戒継続"], ["累積変位", "15.9 mm", "増加継続"], ["検知面積", "19%", "要確認"]],
+        regions,
+        result: "地すべり裸地を1ラベルで検知しました。現地確認と監視頻度の引き上げを推奨します。"
+      }
+    ];
+  }
+  return [
+    {
+      frame: "現在",
+      frameIndex: 0,
+      image,
+      risk: "警戒",
+      metrics: [["路面水位", "31 cm", "通行注意超過"], ["1h雨量", "42 mm", "強雨継続"], ["冠水率", "54%", "車線中央まで"]],
+      regions,
+      result: profile.report
+    },
+    {
+      frame: "予測",
+      frameIndex: 1,
+      image,
+      risk: "警戒",
+      metrics: [["路面水位", "34 cm", "上昇予測"], ["1h雨量", "38 mm", "強雨"], ["冠水率", "58%", "通行注意"]],
+      regions,
+      result: "冠水域だけを1ラベルで検知し、通行注意ライン超過として通知文を生成します。"
+    }
+  ];
+}
+
 function imageFrameStates(templateId, profile) {
+  if (profile.needsGeneratedImage) {
+    return [
+      {
+        frame: "画像生成",
+        frameIndex: 0,
+        image: "",
+        risk: "注意",
+        metrics: profile.metrics,
+        regions: [],
+        result: profile.report
+      },
+      {
+        frame: "AI判定",
+        frameIndex: 1,
+        image: "",
+        risk: "注意",
+        metrics: profile.metrics,
+        regions: [],
+        result: profile.report
+      }
+    ];
+  }
+  if (profile.consultationAsset) return consultationAssetFrameStates(templateId, profile);
   const labels = profile.frames.length ? profile.frames : ["1", "2", "3", "4", "5", "6"];
   const frame = (index, risk, metrics, regions, result, extra = {}) => ({
     ...extra,
@@ -959,11 +1105,41 @@ function generatedIndex(project) {
   const annotations = profile.annotations[0];
   const isTimeseries = profile.mode === "timeseries";
   const frameStates = imageFrameStates(templateId, profile);
+  const needsGeneratedImage = project.aiType === "specialized" && !isTimeseries && Boolean(project.imageGenerationSpec) && !profile.consultationAsset;
   const specializedTitle = profile.appName || primaryTemplate?.title || "AIモニタリング";
   const specializedSummary = primaryTemplate
     ? `${specializedTitle}の完成デモです。最新データを取り込み、AI判定・予測・速報文を業務画面で確認できます。`
     : "AI判定と出力を確認できる業務デモです。";
   const generativeSummary = "生成AI活用の指示から作成した、すぐ試せる業務アプリです。";
+  const showPersonMarker = profile.scenario === "intrusion" && !profile.consultationAsset;
+  const imageSpecText = (project.imageGenerationSpec || "相談内容に合う現場写真を生成します。").replace(/^imagegen:\s*/i, "");
+  const specializedTag = needsGeneratedImage ? "相談AI" : (primaryTemplate?.tag || "特化型AI");
+  const customEvidence = `<div class="evidence-card">
+    <strong>生成後の確認項目</strong>
+    <ul>
+      <li>相談内容に合う実画像か</li>
+      <li>検知対象が1ラベルに絞られているか</li>
+      <li>判定根拠と通知文が同じ対象を説明しているか</li>
+    </ul>
+  </div>`;
+  const imageGenerationScene = `
+    <div class="camera-card live-monitor-card">
+      <div class="camera-toolbar">
+        <strong>${escapeHtml(profile.location || "現場画像生成")}</strong>
+        <span>画像生成</span>
+      </div>
+      <div class="imagegen-brief">
+        <span class="tag">画像生成仕様</span>
+        <h3>相談内容に合う実画像を生成</h3>
+        <p>${escapeHtml(imageSpecText)}</p>
+        <dl>
+          <dt>AI判定</dt>
+          <dd>${escapeHtml(project.maskSpec || "生成画像上の検知対象を1ラベルで表示します。")}</dd>
+          <dt>データ</dt>
+          <dd>${escapeHtml(project.consultationDataSpec || project.inputDescription || "デモデータ1件")}</dd>
+        </dl>
+      </div>
+    </div>`;
   const specializedScene = isTimeseries ? `
     <div class="camera-card live-monitor-card">
       <div class="camera-toolbar">
@@ -988,18 +1164,18 @@ function generatedIndex(project) {
       </div>
       <div class="photo-stage">
         <img id="liveImage" class="monitor-frame" src="${escapeHtml(frameStates[0].image)}" alt="${escapeHtml(profile.location)}">
-        ${profile.scenario === "intrusion" ? `<span id="livePerson" class="live-person" aria-hidden="true"></span>` : ""}
+        ${showPersonMarker ? `<span id="livePerson" class="live-person" aria-hidden="true"></span>` : ""}
         <div id="aiOverlay" class="ai-overlay"></div>
       </div>
       <div class="thumb-row">
-        ${profile.frames.map((frame, index) => `<span class="${index === 0 ? "active" : ""}">${escapeHtml(frame)}</span>`).join("")}
+        ${(profile.consultationAsset ? frameStates : profile.frames).map((frame, index) => `<span class="${index === 0 ? "active" : ""}">${escapeHtml(typeof frame === "string" ? frame : frame.frame)}</span>`).join("")}
       </div>
     </div>`;
   const specializedDemo = `
     <section class="demo-board">
       <div class="demo-head">
         <div>
-          <span class="tag">${escapeHtml(primaryTemplate?.tag || "特化型AI")}</span>
+          <span class="tag">${escapeHtml(specializedTag)}</span>
           <h2>${escapeHtml(specializedTitle)}モニタリング</h2>
           ${improvementNote ? `<p class="improvement-note">${escapeHtml(improvementNote)}</p>` : ""}
         </div>
@@ -1009,14 +1185,14 @@ function generatedIndex(project) {
         </div>
       </div>
       <div class="monitor-grid">
-        ${specializedScene}
+        ${needsGeneratedImage ? imageGenerationScene : specializedScene}
         <div class="insight-card">
           <h3>${isTimeseries ? profile.goalLabel : "AI検知結果"}</h3>
           <div class="metric-stack">
             ${profile.metrics.map(([label, value, note], index) => `<div><span>${escapeHtml(label)}</span><strong id="metricValue${index}">${escapeHtml(value)}</strong><small id="metricNote${index}">${escapeHtml(note)}</small></div>`).join("")}
           </div>
-          ${isTimeseries ? `<div class="live-card"><strong>${escapeHtml(profile.goalLabel)}</strong><p id="liveSummary">現在値を使って判定と予測を更新しています。</p></div>` : chartSvg(profile.series, profile.threshold)}
-          <button id="runDemoBtn">${isTimeseries ? "最新値で予測" : "最新画像を更新"}</button>
+          ${isTimeseries ? `<div class="live-card"><strong>${escapeHtml(profile.goalLabel)}</strong><p id="liveSummary">現在値を使って判定と予測を更新しています。</p></div>` : needsGeneratedImage ? customEvidence : chartSvg(profile.series, profile.threshold)}
+          <button id="runDemoBtn">${isTimeseries ? "最新値で予測" : needsGeneratedImage ? "判定を更新" : "最新画像を更新"}</button>
         </div>
       </div>
       <div class="result-panel" id="demoResult">
@@ -1086,7 +1262,7 @@ function generatedIndex(project) {
       </div>
       <nav class="demo-actions">
         <a href="/">トップに戻る</a>
-        <a href="/#archive:${project.id}">AIで改良する</a>
+        <a href="#inlineImprove">この画面を改良</a>
       </nav>
     </header>
 
@@ -1102,6 +1278,18 @@ function generatedIndex(project) {
     </section>` : ""}
 
     ${project.aiType === "specialized" ? specializedDemo : generativeDemo}
+    <section class="inline-improve" id="inlineImprove">
+      <div>
+        <span class="tag">AIで改良</span>
+        <h2>この画面をそのまま改善する</h2>
+        <p>追加したい表示、文言、判定根拠、出力形式を入力すると、AIがこのデモアプリを更新します。</p>
+      </div>
+      <form id="inlineImproveForm">
+        <textarea id="inlineImprovePrompt" placeholder="例：画像の右側に判定根拠を3つ表示し、アラート文を自治体向けに短くして"></textarea>
+        <button type="submit">改良して反映</button>
+      </form>
+      <div class="inline-improve-log" id="inlineImproveLog"></div>
+    </section>
   </main>
   <script src="./app.js"></script>
 </body>
@@ -1296,6 +1484,37 @@ button {
 }
 .live-monitor-card {
   background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+.imagegen-brief {
+  min-height: 420px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,251,255,0.96)),
+    repeating-linear-gradient(135deg, rgba(29,99,183,0.1) 0 1px, transparent 1px 16px);
+  padding: 22px;
+  display: grid;
+  align-content: center;
+  gap: 14px;
+}
+.imagegen-brief h3 {
+  font-size: 24px;
+  margin-bottom: 0;
+}
+.imagegen-brief dl {
+  display: grid;
+  grid-template-columns: 86px 1fr;
+  gap: 10px 14px;
+  margin: 0;
+}
+.imagegen-brief dt {
+  color: var(--teal-dark);
+  font-weight: 900;
+}
+.imagegen-brief dd {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
 }
 .camera-toolbar, .output-head {
   display: flex;
@@ -1680,6 +1899,24 @@ button {
 .live-card p:last-child {
   margin-bottom: 0;
 }
+.evidence-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.evidence-card strong {
+  display: block;
+  color: var(--teal-dark);
+  margin-bottom: 8px;
+}
+.evidence-card ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  line-height: 1.7;
+}
 .teacher-summary {
   background: #f8fbff;
   border: 1px solid var(--line);
@@ -1892,8 +2129,52 @@ pre {
   border-radius: 6px;
   padding: 12px;
 }
+.inline-improve {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 16px;
+  align-items: start;
+}
+.inline-improve h2 {
+  margin-bottom: 8px;
+}
+.inline-improve p {
+  margin-bottom: 0;
+}
+.inline-improve form {
+  display: grid;
+  gap: 10px;
+}
+.inline-improve textarea {
+  min-height: 112px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  resize: vertical;
+  font: inherit;
+}
+.inline-improve-log {
+  grid-column: 1 / -1;
+  border-radius: 6px;
+  background: #f8fbff;
+  color: var(--teal-dark);
+  font-weight: 800;
+  min-height: 0;
+  padding: 0;
+}
+.inline-improve-log.active {
+  border: 1px solid var(--line);
+  padding: 12px;
+}
 @media (max-width: 820px) {
   .monitor-grid, .generator-grid, .demo-head, .topbar { grid-template-columns: 1fr; display: grid; }
+  .inline-improve { grid-template-columns: 1fr; }
   .ai-workflow { grid-template-columns: 1fr; }
   .metric-stack { grid-template-columns: 1fr; }
   .live-value-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1940,6 +2221,7 @@ function generatedJs(project) {
         ? "予測アラート文"
         : "点検依頼文");
   return `const projectTitle = ${JSON.stringify(project.title)};
+const projectId = ${JSON.stringify(project.id)};
 const isSpecialized = ${JSON.stringify(project.aiType === "specialized")};
 const isTimeseries = ${JSON.stringify(isTimeseries)};
 const profileScenario = ${JSON.stringify(profile.scenario || "")};
@@ -2197,6 +2479,74 @@ fileDrop?.addEventListener("drop", (event) => {
   event.preventDefault();
   fileDrop.classList.remove("dragover");
   loadFile(event.dataTransfer.files?.[0]);
+});
+
+function setInlineImproveLog(message, active = true) {
+  const log = document.getElementById("inlineImproveLog");
+  if (!log) return;
+  log.classList.toggle("active", active);
+  log.textContent = message || "";
+}
+
+async function fetchProjectStatus() {
+  const response = await fetch("/api/projects/" + encodeURIComponent(projectId), {
+    credentials: "same-origin",
+    headers: { accept: "application/json" }
+  });
+  if (response.status === 401) throw new Error("ログインしてから改良してください。トップ画面でログインすると、この画面から改良できます。");
+  if (!response.ok) throw new Error("改良状況を取得できませんでした。");
+  return response.json();
+}
+
+async function waitForImprovement() {
+  for (let i = 0; i < 80; i += 1) {
+    const { project } = await fetchProjectStatus();
+    if (project.status === "ready") {
+      setInlineImproveLog("改良が完了しました。画面を更新します。");
+      setTimeout(() => window.location.reload(), 800);
+      return;
+    }
+    if (project.status === "error") {
+      throw new Error(project.error || "改良に失敗しました。");
+    }
+    const latest = Array.isArray(project.logs) && project.logs.length
+      ? project.logs[project.logs.length - 1].replace(/^\\[[^\\]]+\\]\\s*/, "")
+      : "AIが画面を更新しています。";
+    setInlineImproveLog(latest);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  setInlineImproveLog("改良処理が続いています。少し待ってから画面を更新してください。");
+}
+
+document.getElementById("inlineImproveForm")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const textarea = document.getElementById("inlineImprovePrompt");
+  const prompt = String(textarea?.value || "").trim();
+  if (!prompt) return;
+  const button = event.currentTarget.querySelector("button");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "改良中...";
+  }
+  try {
+    setInlineImproveLog("AIに改良指示を送信しています。");
+    const response = await fetch("/api/projects/" + encodeURIComponent(projectId) + "/improve", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ target: "screen", prompt })
+    });
+    if (response.status === 401) throw new Error("ログインしてから改良してください。トップ画面でログインすると、この画面から改良できます。");
+    if (!response.ok) throw new Error("改良指示を送信できませんでした。");
+    setInlineImproveLog("AIが解析エンジンとUIを更新しています。");
+    await waitForImprovement();
+  } catch (error) {
+    setInlineImproveLog(error.message || "改良に失敗しました。");
+    if (button) {
+      button.disabled = false;
+      button.textContent = "改良して反映";
+    }
+  }
 });
 
 if (!isSpecialized) renderGenerative();`;

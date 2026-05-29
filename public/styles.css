@@ -2090,6 +2090,36 @@ p {
   background: #fff;
 }
 
+.consult-imagegen-placeholder {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.94), rgba(248,251,255,0.96)),
+    repeating-linear-gradient(135deg, rgba(29, 99, 183, 0.1) 0 1px, transparent 1px 16px);
+  padding: 18px;
+  min-height: 170px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
+.consult-imagegen-placeholder span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.consult-imagegen-placeholder strong {
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.consult-imagegen-placeholder p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .consult-mock {
   border: 1px solid var(--line);
   border-radius: 8px;

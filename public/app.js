@@ -1348,6 +1348,12 @@ function consultText() {
 }
 
 function consultationDemoSpec({ templateId, intrusion, flood, crack, slope, title, normalized }) {
+  const customImageSpec = normalized
+    ? `imagegen: ${normalized}。土木・防災・維持管理の実務デモで使うリアルな現場写真を1枚生成。固定カメラまたは点検写真の構図。UI文字、ラベル、透かし、イラスト表現は禁止。`
+    : "imagegen: 相談内容に応じた土木・防災・維持管理のリアルな現場写真を1枚生成。UI文字、ラベル、透かし、イラスト表現は禁止。";
+  const customMaskSpec = normalized
+    ? "相談内容から主要な検知対象を1ラベルに絞り、実画像上の対象位置にだけセグメンテーションまたは検知枠を重ねる。対象外の構造物や背景を検知しない。"
+    : "相談内容を確認して主要な検知対象を1ラベルに絞り、画像と対応する推論結果を作る。";
   if (templateId === "timeseries-anomaly") {
     const river = /河川|洪水|水位|雨量|越水|氾濫/i.test(normalized);
     const road = /道路|冠水|アンダーパス|通行/i.test(normalized);
@@ -1389,6 +1395,15 @@ function consultationDemoSpec({ templateId, intrusion, flood, crack, slope, titl
       imageSpec: "imagegen: コンクリート構造物の近接点検写真。細い主ひび割れ1本と自然な分岐をリアルに生成。UI文字なし。",
       maskSpec: "ひび割れだけを1ラベルで細線セグメンテーション。汚れや目地は除外する。",
       dataset: "crack"
+    };
+  }
+  if (!slope && !intrusion && !flood && !crack) {
+    return {
+      asset: "",
+      dataSpec: "相談内容に合わせた現場画像1枚、検知対象1ラベル、判定スコア、根拠メモ、通知文を含む。",
+      imageSpec: customImageSpec,
+      maskSpec: customMaskSpec,
+      dataset: "custom"
     };
   }
   return {
@@ -1433,14 +1448,15 @@ function inferConsultPlan(text, preferredType = state.consultType, scenario = cu
     };
   }
 
-  const intrusion = /侵入|立入|立ち入り|人|人物|CCTV/i.test(normalized);
+  const intrusion = /(人|人物|歩行者|作業員|立入|立ち入り|立ち入|人の侵入)/i.test(normalized)
+    && !/(車両|作業車|トラック|重機|船舶|船|クレーン|コンテナ)/i.test(normalized);
   const flood = /洪水|水位|雨量|流量|越水|河川|氾濫|上昇|予測/i.test(normalized);
   const crack = /ひび|亀裂|損傷|橋梁|トンネル|コンクリート|点検写真/i.test(normalized);
   const slope = /斜面|地すべり|崩壊|変位|地下水|傾斜/i.test(normalized);
   const templateId = intrusion || flood ? (isTimeSeries && !intrusion ? "timeseries-anomaly" : "river-monitoring") : crack ? "inspection-damage" : slope ? "slope-monitoring" : scenario.templateId || "river-monitoring";
   const dataset = flood && templateId === "timeseries-anomaly" ? "river" : slope ? "slope" : scenario.dataset || "river";
   const goal = /異常/.test(normalized) ? "anomaly" : "forecast";
-  const title = intrusion ? "河川CCTV侵入検知" : flood ? "水位・雨量 洪水アラート" : crack ? "ひび割れ検知" : slope ? "斜面監視AI" : scenario.title || "現場AIデモ";
+  const title = intrusion ? "河川CCTV侵入検知" : flood ? "水位・雨量 洪水アラート" : crack ? "ひび割れ検知" : slope ? "斜面監視AI" : "相談AIデモ";
   const demoSpec = consultationDemoSpec({ templateId, intrusion, flood, crack, slope, title, normalized });
   return {
     type: "specialized",
@@ -1510,20 +1526,21 @@ function consultationPlanHtml(plan) {
       <strong>${escapeHtml(plan.humanMode)}</strong>
       <p>${escapeHtml(plan.title)}として作ります。</p>
     </div>
-    ${imageMock ? `
+    ${imageMock ? (plan.asset ? `
       <div class="consult-mock cctv ${plan.asset ? "with-photo" : ""}">
         <div class="mock-camera ${plan.asset ? "photo" : ""}" ${plan.asset ? `style="background-image:linear-gradient(180deg,rgba(7,24,44,0.02),rgba(7,24,44,0.16)),url('${escapeHtml(plan.asset)}')"` : ""}>
-          ${plan.asset ? "" : `
-            <span class="mock-river"></span>
-            <span class="mock-bank"></span>
-            <span class="mock-person"></span>`}
           <span class="mock-detect">${escapeHtml(plan.checks[0] || "検知")}</span>
         </div>
         <div class="mock-result">
           <strong>${escapeHtml(plan.dataPlan)}</strong>
           <span>${escapeHtml(plan.screenPlan)}</span>
         </div>
-      </div>` : consultChartSvg(chartScenario)}
+      </div>` : `
+      <div class="consult-imagegen-placeholder">
+        <span>画像生成</span>
+        <strong>相談内容に合う現場写真を生成</strong>
+        <p>${escapeHtml((plan.imageSpec || "相談内容に応じたリアルな現場写真を生成します。").replace(/^imagegen:\s*/i, ""))}</p>
+      </div>`) : consultChartSvg(chartScenario)}
     ${plan.imageSpec ? `<div class="consult-preview-card compact"><span>画像生成</span><p>${escapeHtml(plan.imageSpec.replace(/^imagegen:\\s*/i, ""))}</p></div>` : ""}
     ${plan.maskSpec ? `<div class="consult-preview-card compact"><span>AI判定</span><p>${escapeHtml(plan.maskSpec)}</p></div>` : ""}
     <div class="consult-direction-grid">
