@@ -178,9 +178,11 @@ const boardStages = {
 };
 
 const boardStageOrder = ["issue", "detail", "solution", "progress"];
+const BOARD_VERSION = 3;
 
 function defaultBoard() {
-  return {
+  const board = {
+    version: BOARD_VERSION,
     tags: [
       { id: "sales", name: "営業支援", color: "#1d63b7" },
       { id: "technical", name: "技術支援", color: "#0f8b8d" },
@@ -213,10 +215,131 @@ function defaultBoard() {
       boardPanel("p18", "地すべりすべり面・擦痕解析", "progress", 1890, 720, ["chubu", "technical"], "すべり面評価にAIを使う。", "すべり面の評価や擦痕情報を写真・記録から読み取り、評価支援につなげる。", ["擦痕の方向、粗さ、連続性を画像から抽出する。", "専門家の教師データ作成が必要。"], ["技術検証テーマとして保持"])
     ]
   };
+  return applyBoardReviewComments(board);
 }
 
-function boardPanel(id, title, stage, x, y, tags, summary, detail, solutions = [], progress = []) {
-  return { id, title, stage, x, y, tags, summary, detail, solutions, progress };
+function applyBoardReviewComments(board) {
+  const reviews = {
+    p06: {
+      stage: "progress",
+      feasibility: "実施中",
+      assessment: "イノベ2026と同一",
+      summary: "イノベ2026の内容と同一。実施中。",
+      progress: ["イノベ2026で実施中", "新規PoCではなく既存活動との接続を確認"]
+    },
+    p07: {
+      feasibility: "△",
+      assessment: "単一写真では弱い",
+      summary: "写真外の情報が必要。GPSとハザード情報連携が中心。",
+      detail: "災害前写真だけで危険箇所を断定するのは難しい。GPS情報からハザード情報を取得し、写真と合わせてリスクを示すアプリの方が現実的。同一アプリが既にある可能性も確認する。",
+      solutions: ["GPS位置からハザード情報を取得する。", "写真は現地状況確認用に使い、危険度判定は地形・ハザード情報と組み合わせる。"],
+      progress: ["既存類似アプリの有無を確認"]
+    },
+    p08: {
+      feasibility: "△",
+      assessment: "タスク管理補助",
+      summary: "一般的なプロジェクト・タスク管理補助。管理方法が決まった後の細かなAI支援が現実的。",
+      detail: "MS Planner、Backlog、Retask、Asana、コンプルに近い領域。プロジェクト管理方法を先に決め、その中で打合せ記録簿やメールから対応事項を拾う小さなAIを開発するのがよい。都市土木Cでは複数ツールを試し、コンプルを試行中。",
+      solutions: ["まず管理ツールを決める。", "その中で記録簿・メール・電話メモから対応事項を抽出する小機能を作る。"],
+      progress: ["都市土木Cでコンプル試行中"]
+    },
+    p09: {
+      feasibility: "◎",
+      assessment: "AI向き",
+      summary: "国交省の黒塗り方針に該当する場所を抽出できればAIが活きる。",
+      detail: "個人情報、氏名、顔、重要種の確認位置が分かる文章・図面などを抽出し、黒塗り候補を示す。国交省の文章に沿って判定基準を作れるためAI活用テーマとして有望。現在の生成AIでも一部は実現できそう。",
+      solutions: ["国交省の黒塗り方針を判定ルールに落とす。", "PDF・画像・図面の対象別に抽出し、人が承認して黒塗り化する。"],
+      progress: ["最優先の技術支援テーマとして整理"]
+    },
+    p10: {
+      feasibility: "○",
+      assessment: "AIよりシステム開発",
+      summary: "ArcGISで現場デジタル記録する方が本筋。AIよりシステム開発寄り。",
+      detail: "紙の調査結果をスキャンしてGIS/Excel化するより、ArcGIS等で現場でデジタル記録する運用が自然。AIテーマというより記録システム・入力導線の設計が中心。",
+      solutions: ["ArcGIS現場入力を前提に入力フォームを設計する。", "紙記録が残る場合のみOCR補助を検討する。"],
+      progress: ["AIテーマからDX/システム開発テーマへ整理"]
+    },
+    p11: {
+      feasibility: "◎",
+      assessment: "p09へ統合",
+      summary: "公開用成果物の黒塗り支援としてp09へ統合。",
+      detail: "公開用成果物作成の負担軽減はAIが活かせる。氏名、顔、重要種位置、機微情報の墨消し候補抽出を中心に、p09のテーマへ統合する。",
+      solutions: ["p09の黒塗り支援へ統合し、対象成果物ごとのデモを作る。"],
+      progress: ["重複テーマとして統合整理"]
+    },
+    p12: {
+      feasibility: "×",
+      assessment: "優先度低",
+      summary: "プロポ戦略室連携が必要。外販につながりにくく優先度低。",
+      detail: "管理技術者・担当技術者の基礎点確認は営業支援色が強く、他社への売り込みにつながりにくい。プロポ戦略室との連携も必要なため、AI開発テーマとしての優先度は低い。",
+      solutions: ["AIワークショップでは候補に残すが、技術支援系より後回しにする。"],
+      progress: ["優先度低として整理"]
+    },
+    p13: {
+      feasibility: "×",
+      assessment: "社内制度・システム依存",
+      summary: "会社の各システム連携が必要。AIテーマとしては優先度低。",
+      detail: "人事制度改革の個人目標を定量評価で支援する案。会社の各システムとの連携が前提で、最後は人が確認する必要がある。外販性も低く、今回のAI体験テーマとしては優先度低。",
+      solutions: ["社内制度・人事システム側の要件整理が先。"],
+      progress: ["優先度低として整理"]
+    },
+    p14: {
+      feasibility: "△",
+      assessment: "タスク管理ツール同義",
+      summary: "smartDBやZACのリマインドで足りる可能性が高い。",
+      detail: "細かい注文書が多い民間案件の納期管理・精算漏れ防止。smartDBやZACが毎月仕入れ有無をリマインドすればよく、タスク管理ツールと同義の領域。",
+      solutions: ["WonderWeb連携より先に既存システムのリマインド設定を確認する。", "AIは督促文や確認メモ生成など小機能に絞る。"],
+      progress: ["業務管理ツール領域として整理"]
+    },
+    p15: {
+      feasibility: "○",
+      assessment: "集計システムで実現可",
+      summary: "12時間後までの詳細メッシュ雨量を集計するシステムで実現可能。",
+      detail: "連続雨量などから道路の事前通行規制を判定する。12時間後までの雨量は詳細メッシュデータが公表されているため、まずは集計システムの構築で対応できる。AIというより実装・自動化寄り。",
+      solutions: ["詳細メッシュ雨量を取得・集計する。", "規制基準と照合し、判定と通知を出す。"],
+      progress: ["時系列AIというよりDX自動化テーマとして整理"]
+    },
+    p16: {
+      feasibility: "○",
+      assessment: "既存AIあり",
+      summary: "雨量と河川水位の波形データから将来水位を予測するAIは既にある。",
+      detail: "タンクモデルや河川管理の雨量・水位相関AI。河川計画理論に沿ったAIではなく、雨量と河川水位の波形データから将来水位を予測するAIは既にある。中身の説明可能性は課題。",
+      solutions: ["既存AIとの差分を整理する。", "ワークショップでは水位予測の見える化デモに寄せる。"],
+      progress: ["既存技術ありとして位置づけ"]
+    },
+    p17: {
+      feasibility: "△",
+      assessment: "教師データ不足",
+      summary: "3次元化は可能。酸化程度判定は画像解析で可能だが教師データ不足が課題。",
+      detail: "コアを回転しながら写真撮影すれば3次元化はできる。酸化の程度の判定は画像解析で可能性があるが、教師データが不足すると思われる。過去件数と頻度の確認が必要。",
+      solutions: ["過去件数と発生頻度を確認する。", "まずは写真から酸化程度を段階分類する小さな検証にする。"],
+      progress: ["教師データ量の確認待ち"]
+    },
+    p18: {
+      feasibility: "△",
+      assessment: "単一写真では難しい",
+      summary: "地形情報ベースなら0次谷AIで可能。現地単一写真での判定は難しい。",
+      detail: "地すべりすべり面評価や擦痕解析は、地形情報をもとにしたものは0次谷AIでできる。現地の単一写真だけで判定するのは難しい。",
+      solutions: ["地形情報と現地写真を分けて評価する。", "擦痕写真は専門家教師データがある場合だけ検討する。"],
+      progress: ["地形AIとの関係を整理"]
+    }
+  };
+
+  board.panels.forEach((panel) => {
+    const review = reviews[panel.id];
+    if (review) Object.assign(panel, review);
+  });
+
+  board.panels.push(
+    boardPanel("p19", "営業支援系AIの優先度整理", "progress", 380, 840, ["sales"], "外販につながりにくいため、営業支援系AIは優先度低。", "営業支援系AIは本来のところで他社への売り込みにつながりにくい。ワークショップでは候補として見せつつ、優先順位は技術支援系や公開成果物黒塗りより下げる。", ["営業支援は生成AIの小さな業務支援デモに留める。", "PoC候補は技術支援系を中心に選ぶ。"], ["追加コメントを反映"], { feasibility: "低", assessment: "優先度低" }),
+    boardPanel("p20", "粒径加積曲線の東亜建設事例", "detail", 1590, 890, ["chubu", "technical"], "どの事例か確認が必要。", "粒径加積曲線での東亜建設さんの事例について、具体的にどの件を指すか確認する。事例の利用可否は、権利関係と参照範囲を整理してから判断する。", ["対象事例を特定する。", "利用可能な公開情報か、社内参考に留めるか確認する。"], ["確認事項として保持"], { feasibility: "要確認", assessment: "事例確認" })
+  );
+
+  return board;
+}
+
+function boardPanel(id, title, stage, x, y, tags, summary, detail, solutions = [], progress = [], meta = {}) {
+  return { id, title, stage, x, y, tags, summary, detail, solutions, progress, ...meta };
 }
 
 function html(strings, ...values) {
@@ -235,7 +358,7 @@ function escapeHtml(value) {
 function loadBoardState() {
   try {
     const saved = JSON.parse(localStorage.getItem("ox-ai-issue-board") || "null");
-    if (saved?.tags?.length && saved?.panels?.length) return saved;
+    if (saved?.tags?.length && saved?.panels?.length && saved.version === BOARD_VERSION) return saved;
   } catch {
     // Use the seeded board when local storage is unavailable or malformed.
   }
@@ -244,6 +367,7 @@ function loadBoardState() {
 
 function saveBoardState() {
   if (!state.board) return;
+  state.board.version = BOARD_VERSION;
   localStorage.setItem("ox-ai-issue-board", JSON.stringify(state.board));
 }
 
@@ -448,6 +572,8 @@ function renderIssueBoard(container) {
 function renderBoardCard(panel) {
   const tag = primaryTag(panel);
   const color = tag?.color || "#9aa6b2";
+  const feasibility = panel.feasibility || "";
+  const assessment = panel.assessment || "";
   const tagNames = panel.tags?.length
     ? panel.tags.map((tagId) => tagById(tagId)?.name).filter(Boolean)
     : ["未分類"];
@@ -455,10 +581,12 @@ function renderBoardCard(panel) {
     <article class="board-card" data-board-card="${escapeHtml(panel.id)}" style="left:${panel.x}px; top:${panel.y}px; --card-color:${escapeHtml(color)};">
       <div class="board-card-top">
         <span class="stage-badge">${escapeHtml(boardStages[panel.stage] || "課題")}</span>
+        ${feasibility ? `<span class="feasibility-badge">${escapeHtml(feasibility)}</span>` : ""}
         <span class="tag-dot" aria-hidden="true"></span>
       </div>
       <h2>${escapeHtml(panel.title)}</h2>
       <p>${escapeHtml(panel.summary || panel.detail || "内容を入力してください。")}</p>
+      ${assessment ? `<div class="assessment-line">${escapeHtml(assessment)}</div>` : ""}
       <div class="board-card-tags">
         ${tagNames.map((name) => `<span>${escapeHtml(name)}</span>`).join("")}
       </div>
@@ -527,6 +655,14 @@ function renderBoardModal() {
               <label class="field">
                 <span>分類</span>
                 <select name="stage">${stageOptions}</select>
+              </label>
+              <label class="field">
+                <span>実現性</span>
+                <input name="feasibility" value="${escapeHtml(panel.feasibility || "")}" placeholder="◎ / ○ / △ / ×">
+              </label>
+              <label class="field">
+                <span>判断</span>
+                <input name="assessment" value="${escapeHtml(panel.assessment || "")}" placeholder="AI向き / DX寄り / 優先度低">
               </label>
               <label class="field">
                 <span>要約</span>
@@ -762,6 +898,8 @@ function saveBoardPanelForm(form) {
   const data = new FormData(form);
   panel.title = String(data.get("title") || "新しい課題").trim();
   panel.stage = String(data.get("stage") || "issue");
+  panel.feasibility = String(data.get("feasibility") || "").trim();
+  panel.assessment = String(data.get("assessment") || "").trim();
   panel.summary = String(data.get("summary") || "").trim();
   panel.detail = String(data.get("detail") || "").trim();
   panel.tags = data.getAll("tags").map(String);
@@ -818,6 +956,8 @@ function boardPanelPrompt(panel) {
 
 分類: ${boardStages[panel.stage] || "課題"}
 タグ: ${tags}
+実現性: ${panel.feasibility || "未評価"}
+判断: ${panel.assessment || "未整理"}
 
 詳細:
 ${panel.detail || panel.summary || "詳細未入力"}

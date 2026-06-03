@@ -601,11 +601,21 @@ p {
   font-weight: 900;
 }
 
+.feasibility-badge {
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #9a4a04;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .tag-dot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background: var(--card-color);
+  margin-left: auto;
 }
 
 .board-card h2 {
@@ -619,6 +629,16 @@ p {
   font-size: 13px;
   line-height: 1.55;
   margin-bottom: 10px;
+}
+
+.assessment-line {
+  border-radius: 6px;
+  background: #f1f6fb;
+  color: #26415d;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 6px 8px;
+  margin-bottom: 9px;
 }
 
 .board-card-tags {
@@ -686,8 +706,7 @@ p {
   gap: 12px;
 }
 
-.modal-main-fields .field:nth-child(3),
-.modal-main-fields .field:nth-child(4) {
+.modal-main-fields .field:nth-child(n + 5) {
   grid-column: 1 / -1;
 }
 
