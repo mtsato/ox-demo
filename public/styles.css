@@ -754,11 +754,11 @@ p {
 
 .modal-main-fields {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 210px 260px;
+  grid-template-columns: minmax(0, 1fr) 190px 150px;
   gap: 12px;
 }
 
-.modal-main-fields .field:last-child {
+.modal-main-fields .field:nth-last-child(-n + 2) {
   grid-column: 1 / -1;
 }
 

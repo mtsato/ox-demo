@@ -181,48 +181,58 @@ const consultationScenarios = [
   }
 ];
 
-const BOARD_VERSION = 6;
+const BOARD_VERSION = 7;
 const BOARD_CANVAS_WIDTH = 1900;
 const BOARD_CANVAS_HEIGHT = 1420;
 const BOARD_AUDIENCE_INTERNAL = "internal";
 const BOARD_AUDIENCE_EXTERNAL = "external";
-const BOARD_AUDIENCE_LANE_WIDTH = 1100;
-const BOARD_AUDIENCE_GAP = 170;
+const BOARD_AUDIENCE_LANE_WIDTH = 1120;
+const BOARD_AUDIENCE_GAP = 0;
 const BOARD_EXTERNAL_X = BOARD_AUDIENCE_LANE_WIDTH + BOARD_AUDIENCE_GAP;
-const BOARD_AUDIENCE_SWITCH_X = BOARD_AUDIENCE_LANE_WIDTH + BOARD_AUDIENCE_GAP / 2;
+const BOARD_AUDIENCE_SWITCH_X = BOARD_EXTERNAL_X;
 const BOARD_LANE_TOP = 60;
 const BOARD_RENDER_ZOOM = 0.7;
 
 const defaultBoardTags = [
-  { id: "sales-admin", name: "営業管理", color: "#1d63b7" },
-  { id: "tohoku", name: "東北支社", color: "#0f8b8d" },
-  { id: "chubu", name: "中部支社", color: "#f97316" },
-  { id: "boring", name: "ボーリング技術", color: "#7c3aed" },
-  { id: "env-energy", name: "環境・エネルギー", color: "#16a34a" },
-  { id: "public-redaction", name: "公開成果物", color: "#dc2626" }
+  { id: "proposal-sales", name: "営業・提案", color: "#1d63b7" },
+  { id: "business-ops", name: "社内業務", color: "#0f8b8d" },
+  { id: "public-redaction", name: "公開成果物", color: "#dc2626" },
+  { id: "env-survey", name: "環境調査", color: "#16a34a" },
+  { id: "disaster-monitoring", name: "防災・監視", color: "#f97316" },
+  { id: "river-road", name: "河川・道路", color: "#0ea5e9" },
+  { id: "geology-boring", name: "地質・ボーリング", color: "#7c3aed" }
 ];
 
 const defaultPanelTags = {
-  p01: "sales-admin",
-  p02: "sales-admin",
-  p03: "sales-admin",
-  p04: "sales-admin",
-  p05: "sales-admin",
-  p06: "tohoku",
-  p07: "tohoku",
-  p08: "env-energy",
+  p01: "proposal-sales",
+  p02: "proposal-sales",
+  p03: "proposal-sales",
+  p04: "proposal-sales",
+  p05: "business-ops",
+  p06: "disaster-monitoring",
+  p07: "disaster-monitoring",
+  p08: "business-ops",
   p09: "public-redaction",
-  p10: "env-energy",
+  p10: "env-survey",
   p11: "public-redaction",
-  p12: "chubu",
-  p13: "chubu",
-  p14: "chubu",
-  p15: "chubu",
-  p16: "chubu",
-  p17: "boring",
-  p18: "boring",
-  p19: "sales-admin",
-  p20: "boring"
+  p12: "proposal-sales",
+  p13: "business-ops",
+  p14: "business-ops",
+  p15: "river-road",
+  p16: "river-road",
+  p17: "geology-boring",
+  p18: "geology-boring",
+  p19: "proposal-sales",
+  p20: "geology-boring"
+};
+
+const legacyTagMap = {
+  "sales-admin": "proposal-sales",
+  tohoku: "disaster-monitoring",
+  chubu: "river-road",
+  boring: "geology-boring",
+  "env-energy": "env-survey",
+  "public-redaction": "public-redaction"
 };
 
 const defaultPanelAudience = {
@@ -251,11 +261,11 @@ const defaultPanelAudience = {
 const boardAudienceLabels = {
   [BOARD_AUDIENCE_INTERNAL]: {
     label: "社内",
-    description: "内業の効率化・社内業務支援"
+    description: "社内業務を効率化"
   },
   [BOARD_AUDIENCE_EXTERNAL]: {
     label: "社外",
-    description: "売れる技術・技術提案に組み込めるAI"
+    description: "技術提案・売れる技術"
   }
 };
 
@@ -504,28 +514,37 @@ function boardPanel(id, title, stage, x, y, tags, summary, detail, solutions = [
 function normalizeBoardState(board) {
   const normalized = board || defaultBoard();
   let changed = false;
-  let needsAudienceLayout = false;
+  let needsLayout = false;
   normalized.version = BOARD_VERSION;
-  if (!Array.isArray(normalized.tags) || !normalized.tags.length) {
+  const defaultTagIds = new Set(defaultBoardTags.map((tag) => tag.id));
+  const tagIds = Array.isArray(normalized.tags) ? normalized.tags.map((tag) => tag.id) : [];
+  if (!Array.isArray(normalized.tags) || !normalized.tags.length || defaultBoardTags.some((tag) => !tagIds.includes(tag.id))) {
     normalized.tags = defaultBoardTags.map((tag) => ({ ...tag }));
     changed = true;
+    needsLayout = true;
   }
   if (!Array.isArray(normalized.panels)) normalized.panels = [];
   normalized.panels.forEach((panel) => {
-    const tagId = panelTagId(panel, normalized);
+    let tagId = defaultPanelTags[panel.id] || legacyTagMap[panel.tag] || legacyTagMap[panel.tags?.[0]] || panelTagId(panel, normalized);
+    if (!defaultTagIds.has(tagId)) tagId = panelAudience(panel) === BOARD_AUDIENCE_EXTERNAL ? "disaster-monitoring" : "business-ops";
     if (!panel.tag || !Array.isArray(panel.tags) || panel.tags[0] !== tagId) {
       panel.tag = tagId;
       panel.tags = [tagId];
       changed = true;
+      needsLayout = true;
     }
     panel.content = panel.content || panel.detail || panel.summary || "";
+    if (!panel.memo && Array.isArray(panel.progress) && panel.progress.length) {
+      panel.memo = panel.progress.join("\n");
+      changed = true;
+    }
     if (![BOARD_AUDIENCE_INTERNAL, BOARD_AUDIENCE_EXTERNAL].includes(panel.audience)) {
       panel.audience = defaultAudienceForPanel(panel, normalized);
-      needsAudienceLayout = true;
+      needsLayout = true;
       changed = true;
     }
   });
-  if (needsAudienceLayout) layoutBoardPanels(normalized);
+  if (needsLayout) layoutBoardPanels(normalized);
   return { board: normalized, changed };
 }
 
@@ -573,24 +592,26 @@ function layoutBoardPanels(board) {
 
 function boardTagZone(board, tagId, audience = BOARD_AUDIENCE_INTERNAL) {
   const internalZones = {
-    "sales-admin": { x: 70, y: 135 },
-    chubu: { x: 70, y: 760 },
-    "env-energy": { x: 610, y: 135 },
-    "public-redaction": { x: 610, y: 560 },
-    tohoku: { x: 70, y: 1180 },
-    boring: { x: 610, y: 1180 }
+    "proposal-sales": { x: 56, y: 135 },
+    "business-ops": { x: 530, y: 135 },
+    "public-redaction": { x: 530, y: 560 },
+    "env-survey": { x: 56, y: 760 },
+    "river-road": { x: 56, y: 1180 },
+    "disaster-monitoring": { x: 530, y: 1180 },
+    "geology-boring": { x: 56, y: 1600 }
   };
   const externalBase = BOARD_EXTERNAL_X;
   const externalZones = {
-    tohoku: { x: externalBase + 70, y: 135 },
-    chubu: { x: externalBase + 70, y: 640 },
-    boring: { x: externalBase + 610, y: 640 },
-    "public-redaction": { x: externalBase + 610, y: 135 },
-    "env-energy": { x: externalBase + 70, y: 1080 },
-    "sales-admin": { x: externalBase + 610, y: 1080 }
+    "disaster-monitoring": { x: externalBase + 56, y: 135 },
+    "river-road": { x: externalBase + 56, y: 640 },
+    "geology-boring": { x: externalBase + 530, y: 640 },
+    "public-redaction": { x: externalBase + 530, y: 135 },
+    "env-survey": { x: externalBase + 56, y: 1080 },
+    "proposal-sales": { x: externalBase + 530, y: 1080 },
+    "business-ops": { x: externalBase + 56, y: 1480 }
   };
   const tagIndex = Math.max(0, board.tags.findIndex((tag) => tag.id === tagId));
-  const fallbackX = audience === BOARD_AUDIENCE_EXTERNAL ? externalBase + 70 : 70;
+  const fallbackX = audience === BOARD_AUDIENCE_EXTERNAL ? externalBase + 56 : 56;
   const fallbackY = 1320 + Math.floor(tagIndex / 2) * 420;
   return (audience === BOARD_AUDIENCE_EXTERNAL ? externalZones[tagId] : internalZones[tagId]) || { x: fallbackX + (tagIndex % 2) * 540, y: fallbackY };
 }
@@ -620,7 +641,7 @@ function escapeHtml(value) {
 function loadBoardState() {
   try {
     const saved = JSON.parse(localStorage.getItem("ox-ai-issue-board") || "null");
-    if (saved?.tags?.length && saved?.panels?.length && saved.version === BOARD_VERSION) return normalizeBoardState(saved).board;
+    if (saved?.tags?.length && saved?.panels?.length) return normalizeBoardState(saved).board;
   } catch {
     // Use the seeded board when local storage is unavailable or malformed.
   }
@@ -631,7 +652,7 @@ async function loadSharedBoard() {
   const localBoard = loadBoardState();
   try {
     const saved = await api("/api/board");
-    if (saved.board?.tags?.length && saved.board?.panels?.length && saved.board.version === BOARD_VERSION) {
+    if (saved.board?.tags?.length && saved.board?.panels?.length) {
       const normalized = normalizeBoardState(saved.board);
       state.board = normalized.board;
       state.boardUpdatedAt = saved.updatedAt || saved.board.updatedAt || "";
@@ -692,7 +713,6 @@ async function pollBoardUpdates() {
     if (!saved.board?.tags?.length || !saved.board?.panels?.length) return;
     const incoming = saved.updatedAt || saved.board.updatedAt || "";
     if (!incoming || incoming <= state.boardUpdatedAt) return;
-    if (saved.board.version !== BOARD_VERSION) return;
     const normalized = normalizeBoardState(saved.board);
     state.board = normalized.board;
     state.boardUpdatedAt = incoming;
@@ -776,10 +796,16 @@ function audienceLabel(audience) {
   return boardAudienceLabels[panelAudience({ audience })]?.label || boardAudienceLabels[BOARD_AUDIENCE_INTERNAL].label;
 }
 
+function panelMemoText(panel) {
+  if (typeof panel?.memo === "string") return panel.memo;
+  if (Array.isArray(panel?.progress)) return panel.progress.join("\n");
+  return "";
+}
+
 function defaultAudienceForPanel(panel, board = currentBoard()) {
   if (defaultPanelAudience[panel.id]) return defaultPanelAudience[panel.id];
   const tagId = panelTagId(panel, board);
-  if (["tohoku", "boring"].includes(tagId)) return BOARD_AUDIENCE_EXTERNAL;
+  if (["disaster-monitoring", "river-road", "geology-boring"].includes(tagId)) return BOARD_AUDIENCE_EXTERNAL;
   return BOARD_AUDIENCE_INTERNAL;
 }
 
@@ -972,7 +998,7 @@ function boardCanvasStyle(board) {
   const panels = board?.panels || [];
   const right = panels.reduce((max, panel) => Math.max(max, boardDisplayX(panel.x) + panelWidth(panel)), 0);
   const bottom = panels.reduce((max, panel) => Math.max(max, boardDisplayY(panel.y) + panelHeight(panel)), 0);
-  const laneRight = boardDisplayX(BOARD_EXTERNAL_X + BOARD_AUDIENCE_LANE_WIDTH + 260);
+  const laneRight = boardDisplayX(BOARD_EXTERNAL_X + BOARD_AUDIENCE_LANE_WIDTH + 220);
   const width = Math.max(3200, laneRight, right + BOARD_VIEW_PADDING);
   const height = Math.max(2200, bottom + BOARD_VIEW_PADDING);
   return `width:${width}px; height:${height}px;`;
@@ -996,9 +1022,10 @@ function renderBoardLanes(board) {
   const height = boardLaneHeight(board);
   const internalLeft = boardDisplayX(BOARD_MIN_COORD) - 10;
   const internalTop = boardDisplayY(BOARD_LANE_TOP) - 58;
-  const internalWidth = BOARD_AUDIENCE_SWITCH_X - BOARD_MIN_COORD - 28;
-  const externalLeft = boardDisplayX(BOARD_AUDIENCE_SWITCH_X) + 28;
-  const externalWidth = BOARD_AUDIENCE_LANE_WIDTH + 360;
+  const splitLeft = boardDisplayX(BOARD_AUDIENCE_SWITCH_X);
+  const internalWidth = splitLeft - internalLeft - 8;
+  const externalLeft = splitLeft + 8;
+  const externalWidth = boardDisplayX(BOARD_EXTERNAL_X + BOARD_AUDIENCE_LANE_WIDTH + 220) - externalLeft;
   const headingTop = boardDisplayY(BOARD_LANE_TOP) - 78;
   return html`
     <section class="audience-lane internal" style="left:${internalLeft}px; top:${internalTop}px; width:${internalWidth}px; height:${height}px;">
@@ -1072,14 +1099,16 @@ function renderBoardRegions(board) {
 
 function renderBoardModal() {
   if (state.boardModal?.tagsOnly) return renderTagManagerModal();
-  const panel = currentBoard().panels.find((item) => item.id === state.boardModal.panelId);
+  const isDraft = Boolean(state.boardModal?.draft);
+  const panel = isDraft ? state.boardModal.panel : currentBoard().panels.find((item) => item.id === state.boardModal.panelId);
   if (!panel) return "";
   const content = panel.content || panel.detail || panel.summary || "";
+  const memo = panelMemoText(panel);
   const tagOptions = currentBoard().tags
     .map((tag) => `<option value="${escapeHtml(tag.id)}" ${panelTagId(panel) === tag.id ? "selected" : ""}>${escapeHtml(tag.name)}</option>`)
     .join("");
   const audienceOptions = [BOARD_AUDIENCE_INTERNAL, BOARD_AUDIENCE_EXTERNAL]
-    .map((audience) => `<option value="${audience}" ${panelAudience(panel) === audience ? "selected" : ""}>${escapeHtml(boardAudienceLabels[audience].label)}: ${escapeHtml(boardAudienceLabels[audience].description)}</option>`)
+    .map((audience) => `<option value="${audience}" ${panelAudience(panel) === audience ? "selected" : ""}>${escapeHtml(boardAudienceLabels[audience].label)}</option>`)
     .join("");
   return html`
     <div class="board-modal-backdrop" data-board-close>
@@ -1087,7 +1116,7 @@ function renderBoardModal() {
         <form id="boardPanelForm">
           <div class="modal-head">
             <div>
-              <p class="eyebrow">パネル編集</p>
+              <p class="eyebrow">${isDraft ? "課題を追加" : "パネル編集"}</p>
               <h2>${escapeHtml(panel.title || "新しい課題")}</h2>
             </div>
             <button type="button" class="ghost" data-board-close-button>閉じる</button>
@@ -1110,32 +1139,16 @@ function renderBoardModal() {
                 <span>内容</span>
                 <textarea name="content">${escapeHtml(content)}</textarea>
               </label>
-            </div>
-          </div>
-
-          <div class="modal-list-block">
-            <div class="modal-list-head">
-              <h3>解決方針案</h3>
-              <button type="button" class="secondary" data-add-solution>追加</button>
-            </div>
-            <div class="modal-list">
-              ${(panel.solutions || []).map((item, index) => listInput("solution", item, index)).join("") || "<p class=\"empty-line\">まだありません。</p>"}
-            </div>
-          </div>
-
-          <div class="modal-list-block">
-            <div class="modal-list-head">
-              <h3>メモ（協議事項・進捗など）</h3>
-              <button type="button" class="secondary" data-add-progress>追加</button>
-            </div>
-            <div class="modal-list">
-              ${(panel.progress || []).map((item, index) => listInput("progress", item, index)).join("") || "<p class=\"empty-line\">まだありません。</p>"}
+              <label class="field">
+                <span>メモ</span>
+                <textarea name="memo">${escapeHtml(memo)}</textarea>
+              </label>
             </div>
           </div>
 
           <div class="modal-actions">
-            <button type="button" class="danger" data-delete-panel>削除</button>
-            <button type="submit">保存</button>
+            ${isDraft ? "<span></span>" : "<button type=\"button\" class=\"danger\" data-delete-panel>削除</button>"}
+            <button type="submit">${isDraft ? "追加" : "保存"}</button>
           </div>
         </form>
       </section>
@@ -1382,7 +1395,8 @@ function wireBoardModal(container) {
 }
 
 function saveBoardPanelForm(form) {
-  const panel = currentBoard().panels.find((item) => item.id === state.boardModal?.panelId);
+  const isDraft = Boolean(state.boardModal?.draft);
+  const panel = isDraft ? state.boardModal.panel : currentBoard().panels.find((item) => item.id === state.boardModal?.panelId);
   if (!panel) return;
   const data = new FormData(form);
   const previousTag = panelTagId(panel);
@@ -1391,15 +1405,21 @@ function saveBoardPanelForm(form) {
   const content = String(data.get("content") || "").trim();
   const tagId = String(data.get("tag") || currentBoard().tags[0]?.id || defaultBoardTags[0].id);
   const audience = String(data.get("audience") || previousAudience);
+  const memo = String(data.get("memo") || "").trim();
   panel.tag = tagId;
   panel.tags = [tagId];
   panel.audience = audience === BOARD_AUDIENCE_EXTERNAL ? BOARD_AUDIENCE_EXTERNAL : BOARD_AUDIENCE_INTERNAL;
   panel.content = content;
   panel.summary = content;
   panel.detail = content;
-  panel.solutions = Array.from(form.querySelectorAll("[name^='solution-']")).map((input) => input.value.trim()).filter(Boolean);
-  panel.progress = Array.from(form.querySelectorAll("[name^='progress-']")).map((input) => input.value.trim()).filter(Boolean);
-  if (previousTag !== tagId || previousAudience !== panel.audience) placePanelInTagGroup(currentBoard(), panel);
+  panel.memo = memo;
+  panel.progress = memo ? [memo] : [];
+  if (isDraft) {
+    placePanelInTagGroup(currentBoard(), panel);
+    currentBoard().panels.push(panel);
+  } else if (previousTag !== tagId || previousAudience !== panel.audience) {
+    placePanelInTagGroup(currentBoard(), panel);
+  }
   saveBoardState();
   state.boardModal = null;
   renderApp();
@@ -1415,10 +1435,8 @@ function mutateBoardPanelList(field, fallback) {
 
 function addBoardPanelAt(x, y) {
   const tagId = currentBoard().tags[0]?.id || defaultBoardTags[0].id;
-  const panel = boardPanel(uid("panel"), "新しい課題", "issue", x, y, [tagId], "", "内容を入力してください。", [], [], { tag: tagId, audience: boardAudienceFromX(x + 137), w: 274, h: 148 });
-  currentBoard().panels.push(panel);
-  state.boardModal = { panelId: panel.id };
-  saveBoardState();
+  const panel = boardPanel(uid("panel"), "新しい課題", "issue", x, y, [tagId], "", "", [], [], { tag: tagId, audience: boardAudienceFromX(x + 137), w: 274, h: 148, memo: "" });
+  state.boardModal = { draft: true, panel };
   renderApp();
 }
 
@@ -1445,6 +1463,7 @@ function autoLayoutBoard() {
 
 function boardPanelPrompt(panel) {
   const tags = (panel.tags || []).map((tagId) => tagById(tagId)?.name).filter(Boolean).join("、") || "未分類";
+  const memo = panelMemoText(panel);
   return `${panel.title}
 
 属性: ${audienceLabel(panelAudience(panel))}
@@ -1453,11 +1472,8 @@ function boardPanelPrompt(panel) {
 内容:
 ${panel.content || panel.detail || panel.summary || "内容未入力"}
 
-解決方針案:
-${(panel.solutions || []).map((item) => `- ${item}`).join("\n") || "- 未整理"}
-
-メモ（協議事項・進捗など）:
-${(panel.progress || []).map((item) => `- ${item}`).join("\n") || "- 未着手"}
+メモ:
+${memo || "未入力"}
 
 この内容から、ワークショップで触れるAIアプリの完成画面まで作成してください。`;
 }
