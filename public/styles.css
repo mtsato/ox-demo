@@ -310,6 +310,30 @@ p {
   white-space: nowrap;
 }
 
+.board-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #dbe7f4;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.board-zoom .icon-button,
+.board-zoom .zoom-value {
+  min-width: 34px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-weight: 900;
+}
+
+.board-zoom .zoom-value {
+  min-width: 56px;
+  color: #36506c;
+}
+
 .shell {
   width: min(1240px, calc(100% - 32px));
   margin: 0 auto;
@@ -535,6 +559,18 @@ p {
   cursor: grab;
 }
 
+.board-audience-sticky {
+  position: absolute;
+  top: 13px;
+  left: 13px;
+  right: 31px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  pointer-events: none;
+}
+
 .mindmap-board.panning {
   cursor: grabbing;
 }
@@ -544,35 +580,47 @@ p {
   width: 1900px;
   height: 1420px;
   cursor: grab;
-  zoom: 0.7;
+  zoom: var(--board-zoom, 0.7);
 }
 
 .audience-lane {
   position: absolute;
   z-index: 0;
-  border: 2px solid rgba(148, 163, 184, 0.42);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.42);
+  border: 0;
+  border-radius: 0;
   pointer-events: none;
 }
 
 .audience-lane.internal {
-  border-color: rgba(29, 99, 183, 0.28);
-  background: linear-gradient(180deg, rgba(232, 242, 255, 0.68), rgba(255, 255, 255, 0.2));
+  background:
+    linear-gradient(rgba(29, 99, 183, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(29, 99, 183, 0.06) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(232, 242, 255, 0.88), rgba(247, 251, 255, 0.7));
+  background-size: 28px 28px, 28px 28px, auto;
 }
 
 .audience-lane.external {
-  border-color: rgba(15, 139, 141, 0.34);
-  background: linear-gradient(180deg, rgba(226, 248, 248, 0.72), rgba(255, 255, 255, 0.2));
+  border-left: 3px solid rgba(15, 139, 141, 0.28);
+  background:
+    linear-gradient(rgba(15, 139, 141, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 139, 141, 0.06) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(226, 248, 248, 0.9), rgba(247, 253, 253, 0.72));
+  background-size: 28px 28px, 28px 28px, auto;
 }
 
 .audience-heading {
-  position: absolute;
-  z-index: 3;
   display: flex;
   align-items: center;
   gap: 10px;
   pointer-events: none;
+}
+
+.board-audience-sticky .audience-heading {
+  position: static;
+}
+
+.board-audience-sticky .audience-heading.external {
+  justify-self: start;
 }
 
 .audience-heading span {

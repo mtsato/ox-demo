@@ -32,6 +32,7 @@ let state = {
   boardInteracting: false,
   boardScrollLeft: null,
   boardScrollTop: null,
+  boardZoom: 0.7,
   presence: [],
   presencePoll: null,
   boardModal: null,
@@ -186,12 +187,15 @@ const BOARD_CANVAS_WIDTH = 1900;
 const BOARD_CANVAS_HEIGHT = 1420;
 const BOARD_AUDIENCE_INTERNAL = "internal";
 const BOARD_AUDIENCE_EXTERNAL = "external";
-const BOARD_AUDIENCE_LANE_WIDTH = 1120;
+const BOARD_AUDIENCE_LANE_WIDTH = 900;
 const BOARD_AUDIENCE_GAP = 0;
 const BOARD_EXTERNAL_X = BOARD_AUDIENCE_LANE_WIDTH + BOARD_AUDIENCE_GAP;
 const BOARD_AUDIENCE_SWITCH_X = BOARD_EXTERNAL_X;
 const BOARD_LANE_TOP = 60;
 const BOARD_RENDER_ZOOM = 0.7;
+const BOARD_ZOOM_MIN = 0.48;
+const BOARD_ZOOM_MAX = 1.15;
+const BOARD_ZOOM_STEP = 0.08;
 
 const defaultBoardTags = [
   { id: "proposal-sales", name: "営業・提案", color: "#1d63b7" },
@@ -767,6 +771,43 @@ function uid(prefix = "id") {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function loadBoardZoomState() {
+  try {
+    const saved = Number(localStorage.getItem("ox-ai-board-zoom"));
+    if (Number.isFinite(saved)) state.boardZoom = saved;
+  } catch {
+    state.boardZoom = BOARD_RENDER_ZOOM;
+  }
+}
+
+function boardZoom() {
+  return Math.max(BOARD_ZOOM_MIN, Math.min(BOARD_ZOOM_MAX, Number(state.boardZoom || BOARD_RENDER_ZOOM)));
+}
+
+function setBoardZoom(value) {
+  const previous = boardZoom();
+  const next = Math.max(BOARD_ZOOM_MIN, Math.min(BOARD_ZOOM_MAX, Number(value || BOARD_RENDER_ZOOM)));
+  if (Math.abs(previous - next) < 0.005) return;
+  const scroller = document.querySelector("[data-board-scroll]");
+  const centerX = scroller ? (scroller.scrollLeft + scroller.clientWidth / 2) / previous : null;
+  const centerY = scroller ? (scroller.scrollTop + scroller.clientHeight / 2) / previous : null;
+  state.boardZoom = next;
+  try {
+    localStorage.setItem("ox-ai-board-zoom", String(next));
+  } catch {
+    // Keep the in-memory zoom when localStorage is unavailable.
+  }
+  renderApp();
+  requestAnimationFrame(() => {
+    const nextScroller = document.querySelector("[data-board-scroll]");
+    if (!nextScroller || centerX === null || centerY === null) return;
+    nextScroller.scrollLeft = Math.max(0, Math.round(centerX * next - nextScroller.clientWidth / 2));
+    nextScroller.scrollTop = Math.max(0, Math.round(centerY * next - nextScroller.clientHeight / 2));
+    state.boardScrollLeft = nextScroller.scrollLeft;
+    state.boardScrollTop = nextScroller.scrollTop;
+  });
+}
+
 function currentBoard() {
   if (!state.board) state.board = loadBoardState();
   return state.board;
@@ -824,6 +865,7 @@ async function api(path, options = {}) {
 }
 
 async function init() {
+  loadBoardZoomState();
   const me = await api("/api/me");
   state.me = me;
   const archiveMatch = /^#archive:?([^/]*)?/.exec(location.hash);
@@ -951,6 +993,11 @@ function renderNavActions() {
   if (state.view !== "board") return "";
   return html`
     <div class="presence-bar" data-presence>${presenceHtml()}</div>
+    <div class="board-zoom" aria-label="ボード表示倍率">
+      <button type="button" class="ghost icon-button" data-board-zoom-out title="縮小" aria-label="縮小">−</button>
+      <button type="button" class="ghost zoom-value" data-board-zoom-reset title="標準倍率に戻す">${Math.round(boardZoom() * 100)}%</button>
+      <button type="button" class="ghost icon-button" data-board-zoom-in title="拡大" aria-label="拡大">＋</button>
+    </div>
     <button type="button" data-board-add>＋ 課題を追加</button>
     <button type="button" class="ghost" data-board-tags>タグ編集</button>
     <button type="button" class="ghost" data-board-layout>整列</button>`;
@@ -967,6 +1014,9 @@ function wireBoardNavActions() {
     state.boardModal = { tagsOnly: true };
     renderApp();
   });
+  document.querySelector("[data-board-zoom-out]")?.addEventListener("click", () => setBoardZoom(boardZoom() - BOARD_ZOOM_STEP));
+  document.querySelector("[data-board-zoom-in]")?.addEventListener("click", () => setBoardZoom(boardZoom() + BOARD_ZOOM_STEP));
+  document.querySelector("[data-board-zoom-reset]")?.addEventListener("click", () => setBoardZoom(BOARD_RENDER_ZOOM));
 }
 
 function renderCurrentView() {
@@ -980,6 +1030,7 @@ function renderIssueBoard(container) {
   container.innerHTML = html`
     <section class="issue-board-shell">
       <div class="board-workspace">
+        ${renderBoardAudienceSticky()}
         <div class="mindmap-board" data-board-scroll>
           <div class="board-canvas" data-board-canvas style="${boardCanvasStyle(board)}">
             ${renderBoardLanes(board)}
@@ -994,14 +1045,19 @@ function renderIssueBoard(container) {
   wireBoard(container);
 }
 
-function boardCanvasStyle(board) {
+function boardCanvasMetrics(board) {
   const panels = board?.panels || [];
   const right = panels.reduce((max, panel) => Math.max(max, boardDisplayX(panel.x) + panelWidth(panel)), 0);
   const bottom = panels.reduce((max, panel) => Math.max(max, boardDisplayY(panel.y) + panelHeight(panel)), 0);
-  const laneRight = boardDisplayX(BOARD_EXTERNAL_X + BOARD_AUDIENCE_LANE_WIDTH + 220);
-  const width = Math.max(3200, laneRight, right + BOARD_VIEW_PADDING);
+  const laneRight = boardDisplayX(BOARD_EXTERNAL_X + BOARD_AUDIENCE_LANE_WIDTH + 360);
+  const width = Math.max(3000, laneRight, right + BOARD_VIEW_PADDING);
   const height = Math.max(2200, bottom + BOARD_VIEW_PADDING);
-  return `width:${width}px; height:${height}px;`;
+  return { width, height };
+}
+
+function boardCanvasStyle(board) {
+  const { width, height } = boardCanvasMetrics(board);
+  return `width:${width}px; height:${height}px; --board-zoom:${boardZoom()};`;
 }
 
 function boardDisplayX(value) {
@@ -1019,26 +1075,31 @@ function boardLaneHeight(board) {
 }
 
 function renderBoardLanes(board) {
-  const height = boardLaneHeight(board);
-  const internalLeft = boardDisplayX(BOARD_MIN_COORD) - 10;
-  const internalTop = boardDisplayY(BOARD_LANE_TOP) - 58;
+  const { width, height } = boardCanvasMetrics(board);
+  const internalLeft = 0;
+  const internalTop = 0;
   const splitLeft = boardDisplayX(BOARD_AUDIENCE_SWITCH_X);
-  const internalWidth = splitLeft - internalLeft - 8;
-  const externalLeft = splitLeft + 8;
-  const externalWidth = boardDisplayX(BOARD_EXTERNAL_X + BOARD_AUDIENCE_LANE_WIDTH + 220) - externalLeft;
-  const headingTop = boardDisplayY(BOARD_LANE_TOP) - 78;
+  const internalWidth = splitLeft;
+  const externalLeft = splitLeft;
+  const externalWidth = Math.max(0, width - externalLeft);
   return html`
     <section class="audience-lane internal" style="left:${internalLeft}px; top:${internalTop}px; width:${internalWidth}px; height:${height}px;">
     </section>
     <section class="audience-lane external" style="left:${externalLeft}px; top:${internalTop}px; width:${externalWidth}px; height:${height}px;">
-    </section>
-    <div class="audience-heading internal" style="left:${boardDisplayX(0)}px; top:${headingTop}px;">
-      <span>${boardAudienceLabels[BOARD_AUDIENCE_INTERNAL].label}</span>
-      <small>${boardAudienceLabels[BOARD_AUDIENCE_INTERNAL].description}</small>
-    </div>
-    <div class="audience-heading external" style="left:${boardDisplayX(BOARD_EXTERNAL_X)}px; top:${headingTop}px;">
-      <span>${boardAudienceLabels[BOARD_AUDIENCE_EXTERNAL].label}</span>
-      <small>${boardAudienceLabels[BOARD_AUDIENCE_EXTERNAL].description}</small>
+    </section>`;
+}
+
+function renderBoardAudienceSticky() {
+  return html`
+    <div class="board-audience-sticky" aria-hidden="true">
+      <div class="audience-heading internal">
+        <span>${boardAudienceLabels[BOARD_AUDIENCE_INTERNAL].label}</span>
+        <small>${boardAudienceLabels[BOARD_AUDIENCE_INTERNAL].description}</small>
+      </div>
+      <div class="audience-heading external">
+        <span>${boardAudienceLabels[BOARD_AUDIENCE_EXTERNAL].label}</span>
+        <small>${boardAudienceLabels[BOARD_AUDIENCE_EXTERNAL].description}</small>
+      </div>
     </div>`;
 }
 
@@ -1221,8 +1282,9 @@ function wireBoardCanvas(container) {
   const scroller = container.querySelector("[data-board-scroll]");
   if (!canvas) return;
   if (scroller) {
-    const initialLeft = Math.round((BOARD_VIEW_PADDING - 22) * BOARD_RENDER_ZOOM);
-    const initialTop = Math.round((BOARD_VIEW_PADDING - 46) * BOARD_RENDER_ZOOM);
+    const zoom = boardZoom();
+    const initialLeft = Math.round((BOARD_VIEW_PADDING - 22) * zoom);
+    const initialTop = Math.round((BOARD_VIEW_PADDING - 46) * zoom);
     scroller.scrollLeft = Number.isFinite(state.boardScrollLeft) ? state.boardScrollLeft : initialLeft;
     scroller.scrollTop = Number.isFinite(state.boardScrollTop) ? state.boardScrollTop : initialTop;
     state.boardScrollLeft = scroller.scrollLeft;
