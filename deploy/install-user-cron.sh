@@ -12,7 +12,9 @@ mkdir -p "${DATA_DIR}/deploy-logs" "${DATA_DIR}/codex-logs"
 
 if [[ "${OX_INSTALL_CODEX_CLI:-1}" == "1" ]] && ! command -v codex >/dev/null 2>&1; then
   mkdir -p "${HOME}/.local"
-  npm install -g @openai/codex@latest --prefix "${HOME}/.local"
+  if ! npm install -g @openai/codex@latest --prefix "${HOME}/.local"; then
+    echo "Codex CLI install skipped: npm is not available or failed on this host." >&2
+  fi
 fi
 
 crontab -l 2>/dev/null | grep -v "${CRON_MARK}" > "${CRON_FILE}" || true
