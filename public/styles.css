@@ -622,8 +622,6 @@ p {
 
 .modal-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 16px;
 }
 
 .modal-main-fields {
@@ -634,33 +632,6 @@ p {
 
 .modal-main-fields .field:last-child {
   grid-column: 1 / -1;
-}
-
-.modal-side {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 14px;
-  background: #f8fbff;
-}
-
-.tag-check-grid {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.tag-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ink);
-  font-weight: 800;
-  font-size: 13px;
-}
-
-.tag-check span {
-  border-left: 4px solid var(--tag-color);
-  padding-left: 8px;
 }
 
 .full {
@@ -685,12 +656,17 @@ p {
   gap: 8px;
 }
 
-.modal-list-row input,
+.modal-list-row textarea,
 .tag-editor-row input[type="text"],
 .tag-editor-row input:not([type]) {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px 11px;
+}
+
+.modal-list-row textarea {
+  min-height: 70px;
+  resize: vertical;
 }
 
 .empty-line {

@@ -170,7 +170,7 @@ const consultationScenarios = [
   }
 ];
 
-const BOARD_VERSION = 5;
+const BOARD_VERSION = 6;
 const BOARD_CANVAS_WIDTH = 1900;
 const BOARD_CANVAS_HEIGHT = 1420;
 
@@ -204,6 +204,89 @@ const defaultPanelTags = {
   p18: "boring",
   p19: "sales-admin",
   p20: "boring"
+};
+
+const defaultPanelDiscussion = {
+  p01: {
+    solutions: ["既存の営業管理・文書作成フローに、入力補助モジュールとして開発する。", "過去様式と社員情報の取得方法を確認し、まずは生成AIの下書き画面で検証する。"],
+    notes: ["担当: 営業管理側で現行様式と参照データを確認する。", "次回: 指名願い資料の実例を1件用意し、入力項目の不足を洗い出す。"]
+  },
+  p02: {
+    solutions: ["TECRIS・プロポ戦略室の情報を参照する既存アプリ連携モジュールとして検討する。", "連携が難しい場合は、データをダウンロードしてアップロード処理する形で試作する。"],
+    notes: ["確認: TECRIS情報の取得範囲、プロポ戦略室の表現ルール、閲覧権限。", "次回: 技術者経歴のサンプルデータを匿名化して用意する。"]
+  },
+  p03: {
+    solutions: ["生成AI活用アプリとして開発し、企画書PDFと見積表を照合して質問事項を抽出する。", "既存積算システムと直接連携できない場合は、Excel/CSVを取り込む方式にする。"],
+    notes: ["担当: 企画書と見積項目のズレが出た実例を集める。", "次回: 抽出したい質問事項の型を3種類に整理する。"]
+  },
+  p04: {
+    solutions: ["NETISの公開情報を検索・要約するモジュールとして開発可能か確認する。", "APIが使えない場合は、検索URL・CSV・手入力キーワード連携で代替する。"],
+    notes: ["確認: API利用可否、スクレイピング可否、社内利用時の権利関係。", "保留: 具体的な検索対象技術と利用場面を決める。"]
+  },
+  p05: {
+    solutions: ["シェアードサービス準備室と連携し、横断テーマの受付・整理ボードとして運用する。", "AI開発対象ではなく、課題受付からPoC候補化までの管理画面にする。"],
+    notes: ["進捗: 四戸統括部長経由で相談済み。", "次回: シェアードサービス側で扱う業務範囲を確認する。"]
+  },
+  p06: {
+    solutions: ["技術系AIアプリとして開発し、災害写真から被災種別・留意点・初動対応を提示する。", "既存のイノベ2026テーマと重複するため、重複開発ではなく接続先を確認する。"],
+    notes: ["進捗: イノベ2026で実施中。", "次回: 既存活動の画面・データ・担当者を確認する。", "検討: 検証案件を1件選び、開発体制と予算感を確認する。"]
+  },
+  p07: {
+    solutions: ["単一写真判定ではなく、GPSとハザード情報を取り込む既存アプリ連携モジュールとして検討する。", "災害前写真は現地状況確認の補助に使い、危険度は地形・ハザード情報と組み合わせる。"],
+    notes: ["確認: ハザード情報を取得できるAPI・公開データ・位置情報の精度。", "次回: 類似アプリの有無を調査する。"]
+  },
+  p08: {
+    solutions: ["管理技術者向けの小さなAI補助として、打合せ記録簿・メールから対応事項を抽出する。", "タスク管理本体は既存ツールを使い、AIは抽出・登録補助モジュールにする。"],
+    notes: ["進捗: 都市土木Cでコンプル試行中。", "確認: MS Planner、Backlog、コンプル等の運用方針。"]
+  },
+  p09: {
+    solutions: ["AIアプリとして開発し、公開用成果物の氏名・顔・重要種位置・機微情報を検出して黒塗り候補を示す。", "最終出力前に人が承認するUIを必須にする。"],
+    notes: ["優先: 国交省業務で需要が高く、PoC候補として有力。", "次回: 黒塗り基準文書、対象PDF、写真、図面サンプルを集める。", "検討: 検証案件、承認者、開発体制、概算予算を整理する。"]
+  },
+  p10: {
+    solutions: ["AI単体ではなく、現場記録システム・ArcGIS連携として検討する。", "紙記録が残る場合のみOCR補助モジュールを作る。"],
+    notes: ["確認: ArcGISで現場デジタル記録へ移行できるか。", "次回: 紙記録の頻度、文字のばらつき、GIS入力項目を確認する。"]
+  },
+  p11: {
+    solutions: ["p09の公開用成果物黒塗りAIへ統合し、対象成果物ごとの処理テンプレートを作る。", "文章・写真・図面のどれを優先するかを決めてPoC化する。"],
+    notes: ["整理: p09と重複。単独テーマではなく公開成果物タグの中で統合管理。", "次回: 国交省業務で実際に黒塗りが発生する成果物を確認する。"]
+  },
+  p12: {
+    solutions: ["営業管理モジュールとして検討するが、外販性が低いため優先度は下げる。", "開発する場合はプロポ戦略室データを取り込めるか確認する。"],
+    notes: ["確認: プロポ戦略室との連携可否、基礎点計算ルール、権限。", "判断: 技術支援系テーマより後回し。"]
+  },
+  p13: {
+    solutions: ["AIアプリではなく、人事・社内システム側の評価支援モジュールとして扱う。", "各システムのデータ取得が難しい場合は、手入力・CSV連携に限定する。"],
+    notes: ["確認: 人事制度側の評価項目と連携できる社内システム。", "判断: ワークショップのAIデモでは優先度低。"]
+  },
+  p14: {
+    solutions: ["既存のsmartDB・ZAC・WonderWebに通知モジュールを追加できるか確認する。", "直接連携できない場合は、注文書・納期情報をCSVで取り込み、未回収・期限超過を一覧化する。"],
+    notes: ["確認: 既存システムが毎月リマインドできるか。", "次回: 精算漏れ・回収遅れが起きた実例を確認する。"]
+  },
+  p15: {
+    solutions: ["AIというより雨量データ集計・規制基準照合アプリとして開発する。", "必要に応じて将来雨量を取り込み、規制見込みを予測表示する。"],
+    notes: ["確認: 詳細メッシュ雨量の取得方法、規制基準、観測地点リスト。", "次回: 現行マクロの処理内容を分解する。", "検討: 実道路の検証案件を選び、開発体制と予算を確認する。"]
+  },
+  p16: {
+    solutions: ["水位・雨量の時系列予測AIとしてデモ化し、既存AIとの差分を整理する。", "既存AIがある場合は、説明画面・監視UI・通知文生成を追加モジュールとして検討する。"],
+    notes: ["確認: 水位計と雨量計の位置、予測対象時間、既存AIの利用条件。", "次回: 6時間後・24時間後の予測結果をどう業務判断に使うか整理する。", "検討: 検証河川、モデル評価方法、開発体制、予算を整理する。"]
+  },
+  p17: {
+    solutions: ["技術系AIアプリとして、まずはボーリングコア写真の酸化程度・亀裂面を小さく検出する。", "3次元化はコア回転撮影の運用を確認してから次段階にする。"],
+    notes: ["確認: 教師データ量、過去件数、撮影条件の統一可否。", "次回: 代表写真を集め、判定ラベルを1つに絞る。", "検討: 教師データ作成者、開発体制、検証費用を確認する。"]
+  },
+  p18: {
+    solutions: ["単一写真AIではなく、地形情報・0次谷AI・現地写真を組み合わせる技術系AIとして検討する。", "擦痕写真は専門家教師データがある場合のみPoC対象にする。"],
+    notes: ["確認: 地形情報で判定できる範囲と、現地写真で補助できる範囲。", "次回: すべり面・擦痕の教師データ作成者を確認する。", "検討: 検証案件、教師データ作成、開発体制、予算を整理する。"]
+  },
+  p19: {
+    solutions: ["営業支援は生成AIの小さな業務支援アプリとして扱い、技術支援系PoCとは分けて管理する。", "外販性が低いものは既存業務システムの補助モジュールとして検討する。"],
+    notes: ["判断: 営業支援系AIは優先度低。", "次回: 営業管理タグ内で残すテーマ・保留するテーマを分ける。"]
+  },
+  p20: {
+    solutions: ["事例内容を特定し、利用可能なら技術調査メモ・検索補助アプリとして扱う。", "権利関係が不明な場合は、社内検討メモに留める。"],
+    notes: ["確認: 東亜建設事例がどの件か、公開情報か、社内資料か。", "次回: 参照可能範囲を確認してから判断する。"]
+  }
 };
 
 function defaultBoard() {
@@ -353,6 +436,7 @@ function applyBoardReviewComments(board) {
     boardPanel("p20", "粒径加積曲線の東亜建設事例", "detail", 1590, 890, ["chubu", "technical"], "どの事例か確認が必要。", "粒径加積曲線での東亜建設さんの事例について、具体的にどの件を指すか確認する。事例の利用可否は、権利関係と参照範囲を整理してから判断する。", ["対象事例を特定する。", "利用可能な公開情報か、社内参考に留めるか確認する。"], ["確認事項として保持"], { feasibility: "要確認", assessment: "事例確認" })
   );
 
+  applyPanelDiscussionDefaults(board);
   applyPanelTagGroups(board);
   layoutBoardPanels(board);
   return board;
@@ -369,6 +453,15 @@ function applyPanelTagGroups(board) {
     panel.tag = tagId;
     panel.tags = [tagId];
     panel.content = panel.content || panel.detail || panel.summary || "";
+  });
+}
+
+function applyPanelDiscussionDefaults(board) {
+  board.panels.forEach((panel) => {
+    const discussion = defaultPanelDiscussion[panel.id];
+    if (!discussion) return;
+    panel.solutions = discussion.solutions;
+    panel.progress = discussion.notes;
   });
 }
 
@@ -498,8 +591,8 @@ function renderLogin() {
   app.innerHTML = html`
     <section class="login-screen">
       <div class="login-copy">
-        <p class="eyebrow">OX AI Builder</p>
-        <h1>OX AI Builder<br><span>AI 体験アプリ</span></h1>
+        <p class="eyebrow">OX Workshop</p>
+        <h1>OX Workshop</h1>
       </div>
       <div class="login-panel">
         <form class="login-card" id="loginForm">
@@ -553,8 +646,8 @@ function renderApp() {
         <button class="brand brand-button" type="button" data-view="board" title="パネルに戻る" aria-label="パネルに戻る">
           <div class="mark">OX</div>
           <div>
-            <strong>OX AI Builder</strong>
-            <span>AI 体験アプリ</span>
+            <strong>OX Workshop</strong>
+            <span>Workshop</span>
           </div>
         </button>
         <div class="nav-tabs">
@@ -691,11 +784,6 @@ function renderBoardModal() {
                 <textarea name="content">${escapeHtml(content)}</textarea>
               </label>
             </div>
-            <aside class="modal-side">
-              <h3>タグ設定</h3>
-              <p class="side-note">パネルは1つのタグに所属します。タグごとにボード上でまとまって表示されます。</p>
-              <button type="button" class="ghost full" data-open-tag-editor>タグを編集</button>
-            </aside>
           </div>
 
           <div class="modal-list-block">
@@ -710,7 +798,7 @@ function renderBoardModal() {
 
           <div class="modal-list-block">
             <div class="modal-list-head">
-              <h3>進捗</h3>
+              <h3>メモ（協議事項・進捗など）</h3>
               <button type="button" class="secondary" data-add-progress>追加</button>
             </div>
             <div class="modal-list">
@@ -728,10 +816,10 @@ function renderBoardModal() {
 }
 
 function listInput(type, value, index) {
-  const label = type === "solution" ? "方針" : "進捗";
+  const label = type === "solution" ? "解決方針案" : "メモ";
   return html`
     <div class="modal-list-row">
-      <input name="${type}-${index}" value="${escapeHtml(value)}" aria-label="${label}${index + 1}">
+      <textarea name="${type}-${index}" aria-label="${label}${index + 1}">${escapeHtml(value)}</textarea>
       <button type="button" class="danger" data-list-delete="${type}" data-list-index="${index}">削除</button>
     </div>`;
 }
@@ -881,12 +969,8 @@ function wireBoardModal(container) {
       renderApp();
     }
   });
-  modal.querySelector("[data-open-tag-editor]")?.addEventListener("click", () => {
-    state.boardModal = { tagsOnly: true };
-    renderApp();
-  });
   modal.querySelector("[data-add-solution]")?.addEventListener("click", () => mutateBoardPanelList("solutions", "新しい解決方針案"));
-  modal.querySelector("[data-add-progress]")?.addEventListener("click", () => mutateBoardPanelList("progress", "新しい進捗"));
+  modal.querySelector("[data-add-progress]")?.addEventListener("click", () => mutateBoardPanelList("progress", "新しいメモ"));
   modal.querySelectorAll("[data-list-delete]").forEach((button) => {
     button.addEventListener("click", () => {
       const field = button.dataset.listDelete === "solution" ? "solutions" : "progress";
@@ -954,8 +1038,8 @@ function saveBoardPanelForm(form) {
   panel.content = content;
   panel.summary = content;
   panel.detail = content;
-  panel.solutions = Array.from(form.querySelectorAll("input[name^='solution-']")).map((input) => input.value.trim()).filter(Boolean);
-  panel.progress = Array.from(form.querySelectorAll("input[name^='progress-']")).map((input) => input.value.trim()).filter(Boolean);
+  panel.solutions = Array.from(form.querySelectorAll("[name^='solution-']")).map((input) => input.value.trim()).filter(Boolean);
+  panel.progress = Array.from(form.querySelectorAll("[name^='progress-']")).map((input) => input.value.trim()).filter(Boolean);
   if (previousTag !== tagId) placePanelInTagGroup(currentBoard(), panel);
   saveBoardState();
   state.boardModal = null;
@@ -1012,7 +1096,7 @@ ${panel.content || panel.detail || panel.summary || "内容未入力"}
 解決方針案:
 ${(panel.solutions || []).map((item) => `- ${item}`).join("\n") || "- 未整理"}
 
-進捗:
+メモ（協議事項・進捗など）:
 ${(panel.progress || []).map((item) => `- ${item}`).join("\n") || "- 未着手"}
 
 この内容から、ワークショップで触れるAIアプリの完成画面まで作成してください。`;

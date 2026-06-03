@@ -1292,7 +1292,7 @@ function generatedIndex(project) {
   <main class="shell">
     <header class="topbar">
       <div>
-        <p class="eyebrow">OX AI Builder</p>
+        <p class="eyebrow">OX Workshop</p>
         <h1>${escapeHtml(project.title)}</h1>
       </div>
       <nav class="demo-actions">
