@@ -674,8 +674,11 @@ async function init() {
   const me = await api("/api/me");
   state.me = me;
   const archiveMatch = /^#archive:?([^/]*)?/.exec(location.hash);
-  state.view = archiveMatch ? "archive" : location.hash === "#app-create" ? "app-create" : "board";
-  if (archiveMatch?.[1]) state.activeProjectId = archiveMatch[1];
+  state.view = archiveMatch || location.hash === "#app-create" ? "app-create" : "board";
+  if (archiveMatch) {
+    state.builderStage = "archive";
+    if (archiveMatch[1]) state.activeProjectId = archiveMatch[1];
+  }
   if (!me.authenticated) {
     renderLogin();
     return;
@@ -745,19 +748,21 @@ function renderApp() {
   app.innerHTML = html`
     <section class="app-shell">
       <nav class="top-nav">
-        <button class="brand brand-button" type="button" data-view="board" title="パネルに戻る" aria-label="パネルに戻る">
+        <button class="brand brand-button" type="button" data-view="board" title="アイデアボードに戻る" aria-label="アイデアボードに戻る">
           <div class="mark">OX</div>
           <div>
             <strong>OX Workshop</strong>
-            <span>Workshop</span>
+            <span>${escapeHtml(navSubtitle())}</span>
           </div>
         </button>
         <div class="nav-tabs">
-          ${tabButton("board", "パネル")}
-          ${tabButton("app-create", "アプリ作成")}
-          ${tabButton("archive", "作ったアプリ")}
+          ${tabButton("board", "アイデアボード")}
+          ${tabButton("app-create", "AIアプリ体験")}
         </div>
-        <button class="ghost" id="logoutBtn">ログアウト</button>
+        <div class="nav-actions">
+          ${renderNavActions()}
+          <button class="ghost" id="logoutBtn">ログアウト</button>
+        </div>
       </nav>
       <div class="shell" id="view"></div>
     </section>`;
@@ -771,21 +776,48 @@ function renderApp() {
     button.addEventListener("click", () => {
       state.view = button.dataset.view;
       if (state.view === "app-create") state.builderStage = "select";
-      const hash = state.view === "archive" ? "#archive" : state.view === "app-create" ? "#app-create" : "#board";
+      const hash = state.view === "app-create" ? "#app-create" : "#board";
       history.replaceState(null, "", hash);
       renderApp();
     });
   });
   renderCurrentView();
+  wireBoardNavActions();
 }
 
 function tabButton(id, label) {
   return `<button data-view="${id}" class="${state.view === id ? "active" : ""}">${label}</button>`;
 }
 
+function navSubtitle() {
+  if (state.view === "app-create") return "AIアプリ体験";
+  return "アイデアボード";
+}
+
+function renderNavActions() {
+  if (state.view !== "board") return "";
+  return html`
+    <div class="presence-bar" data-presence>${presenceHtml()}</div>
+    <button type="button" data-board-add>＋ 課題を追加</button>
+    <button type="button" class="ghost" data-board-tags>タグ編集</button>
+    <button type="button" class="ghost" data-board-layout>整列</button>`;
+}
+
+function wireBoardNavActions() {
+  if (state.view !== "board") return;
+  document.querySelector("[data-board-layout]")?.addEventListener("click", () => {
+    if (!confirm("現在の配置をタグごとに整列します。手動で動かした位置も更新されます。実行しますか？")) return;
+    autoLayoutBoard();
+  });
+  document.querySelector("[data-board-add]")?.addEventListener("click", addBoardPanelFromButton);
+  document.querySelector("[data-board-tags]")?.addEventListener("click", () => {
+    state.boardModal = { tagsOnly: true };
+    renderApp();
+  });
+}
+
 function renderCurrentView() {
   const view = document.getElementById("view");
-  if (state.view === "archive") return renderArchive(view);
   if (state.view === "app-create") return renderBuilder(view);
   renderIssueBoard(view);
 }
@@ -794,24 +826,9 @@ function renderIssueBoard(container) {
   const board = currentBoard();
   container.innerHTML = html`
     <section class="issue-board-shell">
-      <div class="board-mini-nav">
-        <div class="board-mini-title">
-          <span>課題ボード</span>
-          <strong>AI活用テーマを整理する</strong>
-        </div>
-        <div class="board-mini-actions">
-          <div class="presence-bar" data-presence>${presenceHtml()}</div>
-          <button type="button" class="ghost" data-board-layout>整列</button>
-        </div>
-      </div>
-
       <div class="board-workspace">
-        <div class="board-action-strip">
-          <button type="button" data-board-add>＋ 課題を追加</button>
-          <button type="button" class="ghost" data-board-tags>タグ編集</button>
-        </div>
         <div class="mindmap-board" data-board-scroll>
-          <div class="board-canvas" data-board-canvas>
+          <div class="board-canvas" data-board-canvas style="${boardCanvasStyle(board)}">
             ${renderBoardRegions(board)}
             ${board.panels.map(renderBoardCard).join("")}
           </div>
@@ -823,12 +840,22 @@ function renderIssueBoard(container) {
   wireBoard(container);
 }
 
+function boardCanvasStyle(board) {
+  const panels = board?.panels || [];
+  const right = panels.reduce((max, panel) => Math.max(max, Number(panel.x || 0) + panelWidth(panel)), 0);
+  const bottom = panels.reduce((max, panel) => Math.max(max, Number(panel.y || 0) + panelHeight(panel)), 0);
+  const width = Math.max(2400, right + 700);
+  const height = Math.max(1700, bottom + 620);
+  return `width:${width}px; height:${height}px;`;
+}
+
 function presenceHtml() {
   const participants = state.presence || [];
   const shown = participants.slice(0, 8);
-  if (!shown.length) return `<span class="presence-label">ここにいる</span><span class="presence-empty">確認中</span>`;
+  if (!shown.length) return `<span class="presence-label">参加中</span><span class="presence-empty">0名</span>`;
   return html`
-    <span class="presence-label">ここにいる</span>
+    <span class="presence-label">参加中</span>
+    <span class="presence-count">${participants.length}名</span>
     <span class="presence-avatars">
       ${shown.map((person) => `
         <span class="presence-avatar ${person.self ? "self" : ""}" style="--presence-color:${escapeHtml(person.color || "#64748b")}" title="${escapeHtml(person.name)}">
@@ -1066,8 +1093,8 @@ function wireBoardCanvas(container) {
         card.style.width = `${panel.w}px`;
         card.style.minHeight = `${panel.h}px`;
       } else {
-        panel.x = Math.max(20, Math.round(start.panelX + dx));
-        panel.y = Math.max(20, Math.round(start.panelY + dy));
+        panel.x = Math.max(0, Math.round(start.panelX + dx));
+        panel.y = Math.max(0, Math.round(start.panelY + dy));
         card.style.left = `${panel.x}px`;
         card.style.top = `${panel.y}px`;
       }
@@ -1232,14 +1259,16 @@ ${(panel.progress || []).map((item) => `- ${item}`).join("\n") || "- 未着手"}
 }
 
 function renderBuilder(container) {
+  if (state.builderStage === "archive") return renderArchive(container);
   const configure = state.builderStage === "configure";
   if (!configure) {
     container.innerHTML = html`
       <header class="page-head compact-head">
         <div>
-          <p class="eyebrow">アプリ作成</p>
-          <h1>AIアプリ開発 (デモ版)</h1>
+          <p class="eyebrow">AIアプリ体験</p>
+          <h1>体験する内容を選ぶ</h1>
         </div>
+        <button type="button" class="secondary" data-builder-archive>作成済みアプリ</button>
       </header>
 
       <section class="mode-picker">
@@ -1262,6 +1291,11 @@ function renderBuilder(container) {
     document.querySelectorAll("[data-ai-type]").forEach((button) => {
       button.addEventListener("click", () => startBuilderMode(button.dataset.aiType));
     });
+    document.querySelector("[data-builder-archive]")?.addEventListener("click", () => {
+      state.builderStage = "archive";
+      history.replaceState(null, "", "#archive");
+      renderApp();
+    });
     return;
   }
 
@@ -1283,9 +1317,9 @@ function renderBuilder(container) {
 
   container.innerHTML = html`
     <header class="page-head with-back">
-      <button type="button" class="back-button" data-builder-back>← アプリ作成へ戻る</button>
+      <button type="button" class="back-button" data-builder-back>← AIアプリ体験へ戻る</button>
       <div>
-        <p class="eyebrow">アプリ作成</p>
+        <p class="eyebrow">AIアプリ体験</p>
         <h1>${modeTitle}</h1>
       </div>
     </header>
@@ -2676,7 +2710,8 @@ function pollProject(id) {
         state.polling = null;
         await loadWorkspace();
         if (project.status === "ready") {
-          state.view = "archive";
+          state.view = "app-create";
+          state.builderStage = "archive";
           if (!state.keepImproveOpen) state.activeProjectId = null;
           history.replaceState(null, "", state.activeProjectId ? `#archive:${state.activeProjectId}` : "#archive");
           state.keepImproveOpen = false;
@@ -2832,11 +2867,11 @@ function renderArchive(container) {
   container.innerHTML = html`
     <header class="page-head">
       <div>
-        <p class="eyebrow">作成済みアプリ</p>
-        <h1>作ったアプリ</h1>
-        <p>完成デモを開く、削除する。</p>
+        <p class="eyebrow">AIアプリ体験</p>
+        <h1>作成済みアプリ</h1>
+        <p>完成デモを開く、改良する、削除する。</p>
       </div>
-      <button type="button" class="secondary" data-view="app-create">新しく作る</button>
+      <button type="button" class="secondary" data-builder-new>新しく作る</button>
     </header>
     ${state.projects.length ? `<section class="archive-grid">${cards}</section>` : `<div class="empty">まだ作成したアプリはありません。</div>`}`;
 
@@ -2846,14 +2881,12 @@ function renderArchive(container) {
   document.querySelectorAll("[data-delete-project]").forEach((button) => {
     button.addEventListener("click", deleteProject);
   });
-  document.querySelectorAll("[data-view]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.view = button.dataset.view;
-      if (state.view === "app-create") state.builderStage = "select";
-      const hash = state.view === "archive" ? "#archive" : state.view === "app-create" ? "#app-create" : "#board";
-      history.replaceState(null, "", hash);
-      renderApp();
-    });
+  document.querySelector("[data-builder-new]")?.addEventListener("click", () => {
+    state.view = "app-create";
+    state.builderStage = "select";
+    state.activeProjectId = null;
+    history.replaceState(null, "", "#app-create");
+    renderApp();
   });
 }
 

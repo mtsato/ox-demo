@@ -30,7 +30,7 @@ const DEPLOY_TOKEN = process.env.OX_DEPLOY_TOKEN || "";
 const DEPLOY_REQUESTS_DIR = path.join(DATA_DIR, "deploy-requests");
 const DEPLOY_STATUS_FILE = path.join(DATA_DIR, "deploy-status.json");
 const BOARD_FILE = path.join(DATA_DIR, "board.json");
-const PRESENCE_TTL_MS = 25 * 1000;
+const PRESENCE_TTL_MS = 15 * 1000;
 
 const sessions = new Map();
 const jobs = new Map();
@@ -152,10 +152,17 @@ function activeParticipants(selfSid = "") {
   const now = Date.now();
   const out = [];
   for (const [sid, session] of sessions.entries()) {
-    if (now - (session.lastSeen || session.createdAt) > PRESENCE_TTL_MS) continue;
+    if (now - (session.lastSeen || session.createdAt) > PRESENCE_TTL_MS) {
+      sessions.delete(sid);
+      continue;
+    }
     out.push(publicParticipant(session, selfSid));
   }
   return out.sort((a, b) => a.name.localeCompare(b.name, "ja"));
+}
+
+function activeSessionCount() {
+  return activeParticipants("").length;
 }
 
 async function loadSharedBoard() {
@@ -2931,7 +2938,7 @@ async function router(req, res) {
     else payload = Object.fromEntries(new URLSearchParams(body.toString("utf8")).entries());
     if (payload.id === AUTH_ID && payload.password === AUTH_PASS) {
       const sid = crypto.randomBytes(24).toString("hex");
-      const index = sessions.size + 1;
+      const index = activeSessionCount() + 1;
       sessions.set(sid, {
         sid,
         publicId: crypto.createHash("sha1").update(sid).digest("hex").slice(0, 10),

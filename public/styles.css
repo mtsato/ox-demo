@@ -232,6 +232,7 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
   padding: 14px 22px;
   background: rgba(245, 248, 252, 0.94);
   backdrop-filter: blur(12px);
@@ -295,6 +296,18 @@ p {
   color: var(--teal-dark);
   background: #e7f1ff;
   border-color: #bdd7f5;
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nav-actions button {
+  white-space: nowrap;
 }
 
 .shell {
@@ -434,42 +447,7 @@ p {
 
 .issue-board-shell {
   display: grid;
-  gap: 8px;
-}
-
-.board-mini-nav {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  min-height: 38px;
-}
-
-.board-mini-title {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-}
-
-.board-mini-title span {
-  color: var(--teal-dark);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.board-mini-title strong {
-  color: #4c6076;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.board-mini-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: 0;
 }
 
 .presence-bar {
@@ -488,6 +466,11 @@ p {
 
 .presence-label {
   color: #64748b;
+  white-space: nowrap;
+}
+
+.presence-count {
+  color: var(--teal-dark);
   white-space: nowrap;
 }
 
@@ -537,28 +520,8 @@ p {
   align-items: stretch;
 }
 
-.board-action-strip {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px;
-  border: 1px solid rgba(190, 216, 245, 0.92);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 12px 26px rgba(15, 46, 90, 0.12);
-}
-
-.board-action-strip button {
-  white-space: nowrap;
-}
-
 .mindmap-board {
-  height: clamp(620px, calc(100vh - 138px), 920px);
+  height: clamp(650px, calc(100vh - 104px), 960px);
   min-height: 620px;
   overflow: auto;
   border: 1px solid #cbdced;
@@ -2973,7 +2936,6 @@ p {
   .consult-builder,
   .consult-type-switch,
   .consult-scenarios,
-  .board-mini-nav,
   .board-workspace,
   .modal-grid,
   .modal-main-fields {
@@ -2999,7 +2961,7 @@ p {
   .brand {
     min-width: auto;
   }
-  .board-mini-actions {
+  .nav-actions {
     justify-content: flex-start;
   }
 }
@@ -3039,18 +3001,6 @@ p {
   .mindmap-board {
     min-height: 520px;
     height: calc(100vh - 190px);
-  }
-  .board-mini-nav {
-    gap: 8px;
-  }
-  .board-mini-title {
-    flex-wrap: wrap;
-  }
-  .board-action-strip {
-    left: 8px;
-    right: 8px;
-    top: 8px;
-    flex-wrap: wrap;
   }
   .presence-bar {
     border-radius: 8px;
