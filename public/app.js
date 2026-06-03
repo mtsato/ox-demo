@@ -2,7 +2,7 @@ const app = document.getElementById("app");
 
 let state = {
   me: null,
-  view: "builder",
+  view: "board",
   aiType: "specialized",
   builderStage: "select",
   templates: [],
@@ -178,19 +178,21 @@ const boardStages = {
 };
 
 const boardStageOrder = ["issue", "detail", "solution", "progress"];
-const BOARD_VERSION = 3;
+const BOARD_VERSION = 4;
 
 function defaultBoard() {
   const board = {
     version: BOARD_VERSION,
     tags: [
-      { id: "sales", name: "営業支援", color: "#1d63b7" },
-      { id: "technical", name: "技術支援", color: "#0f8b8d" },
-      { id: "shared", name: "シェアードサービス", color: "#7c3aed" },
-      { id: "env", name: "環境・エネルギー本部", color: "#16a34a" },
-      { id: "chubu", name: "中部支社", color: "#f97316" },
-      { id: "public", name: "公開成果物", color: "#dc2626" },
-      { id: "ops", name: "管理・運用", color: "#475569" }
+      { id: "universal", name: "支社共通", color: "#64748b", region: true },
+      { id: "branch", name: "支社固有", color: "#f97316", region: true },
+      { id: "sales", name: "営業支援", color: "#1d63b7", region: false },
+      { id: "technical", name: "技術支援", color: "#0f8b8d", region: false },
+      { id: "shared", name: "シェアードサービス", color: "#7c3aed", region: false },
+      { id: "env", name: "環境・エネルギー本部", color: "#16a34a", region: false },
+      { id: "chubu", name: "中部支社", color: "#f97316", region: false },
+      { id: "public", name: "公開成果物", color: "#dc2626", region: false },
+      { id: "ops", name: "管理・運用", color: "#475569", region: false }
     ],
     panels: [
       boardPanel("p01", "指名願い資料作成支援", "issue", 80, 120, ["sales"], "指名願い資料の作成負担を下げる。", "必要項目、過去資料、技術者情報を整理し、提出用の下書きを作る。", ["過去様式と社員情報を読み込み、記入候補を生成する。"], ["営業支援AIの候補として整理"]),
@@ -335,11 +337,42 @@ function applyBoardReviewComments(board) {
     boardPanel("p20", "粒径加積曲線の東亜建設事例", "detail", 1590, 890, ["chubu", "technical"], "どの事例か確認が必要。", "粒径加積曲線での東亜建設さんの事例について、具体的にどの件を指すか確認する。事例の利用可否は、権利関係と参照範囲を整理してから判断する。", ["対象事例を特定する。", "利用可能な公開情報か、社内参考に留めるか確認する。"], ["確認事項として保持"], { feasibility: "要確認", assessment: "事例確認" })
   );
 
+  applyScopeTags(board);
+  layoutBoardPanels(board);
   return board;
 }
 
 function boardPanel(id, title, stage, x, y, tags, summary, detail, solutions = [], progress = [], meta = {}) {
   return { id, title, stage, x, y, tags, summary, detail, solutions, progress, ...meta };
+}
+
+function applyScopeTags(board) {
+  const branchSpecific = new Set(["p12", "p13", "p14", "p15", "p16", "p17", "p18", "p20"]);
+  board.panels.forEach((panel) => {
+    const scope = branchSpecific.has(panel.id) ? "branch" : "universal";
+    panel.tags = [scope, ...(panel.tags || []).filter((tagId) => tagId !== "universal" && tagId !== "branch")];
+  });
+}
+
+function layoutBoardPanels(board) {
+  const counts = {};
+  const stageX = {
+    issue: 80,
+    detail: 520,
+    solution: 960,
+    progress: 1400
+  };
+  board.panels.forEach((panel) => {
+    const scope = panel.tags?.includes("branch") ? "branch" : "universal";
+    const key = `${scope}-${panel.stage}`;
+    const count = counts[key] || 0;
+    panel.x = stageX[panel.stage] || 80;
+    panel.y = (scope === "branch" ? 1010 : 120) + count * 190;
+    panel.w = panel.w || 300;
+    panel.h = panel.h || 148;
+    counts[key] = count + 1;
+  });
+  return board;
 }
 
 function html(strings, ...values) {
@@ -392,7 +425,8 @@ function tagById(tagId) {
 }
 
 function primaryTag(panel) {
-  return panel.tags?.length ? tagById(panel.tags[0]) : null;
+  const visualTag = (panel.tags || []).find((tagId) => !["universal", "branch"].includes(tagId));
+  return visualTag ? tagById(visualTag) : panel.tags?.length ? tagById(panel.tags[0]) : null;
 }
 
 async function api(path, options = {}) {
@@ -414,7 +448,7 @@ async function init() {
   state.me = me;
   state.board = loadBoardState();
   const archiveMatch = /^#archive:?([^/]*)?/.exec(location.hash);
-  state.view = archiveMatch ? "archive" : "builder";
+  state.view = archiveMatch ? "archive" : location.hash === "#app-create" ? "app-create" : "board";
   if (archiveMatch?.[1]) state.activeProjectId = archiveMatch[1];
   if (!me.authenticated) {
     renderLogin();
@@ -480,7 +514,7 @@ function renderApp() {
   app.innerHTML = html`
     <section class="app-shell">
       <nav class="top-nav">
-        <button class="brand brand-button" type="button" data-view="builder" title="トップに戻る" aria-label="トップに戻る">
+        <button class="brand brand-button" type="button" data-view="board" title="パネルに戻る" aria-label="パネルに戻る">
           <div class="mark">OX</div>
           <div>
             <strong>OX AI Builder</strong>
@@ -488,7 +522,8 @@ function renderApp() {
           </div>
         </button>
         <div class="nav-tabs">
-          ${tabButton("builder", "課題ボード")}
+          ${tabButton("board", "パネル")}
+          ${tabButton("app-create", "アプリ作成")}
           ${tabButton("archive", "作ったアプリ")}
         </div>
         <button class="ghost" id="logoutBtn">ログアウト</button>
@@ -503,8 +538,9 @@ function renderApp() {
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
       state.view = button.dataset.view;
-      if (state.view === "builder") state.builderStage = "select";
-      history.replaceState(null, "", state.view === "archive" ? "#archive" : "#builder");
+      if (state.view === "app-create") state.builderStage = "select";
+      const hash = state.view === "archive" ? "#archive" : state.view === "app-create" ? "#app-create" : "#board";
+      history.replaceState(null, "", hash);
       renderApp();
     });
   });
@@ -518,7 +554,8 @@ function tabButton(id, label) {
 function renderCurrentView() {
   const view = document.getElementById("view");
   if (state.view === "archive") return renderArchive(view);
-  renderBuilder(view);
+  if (state.view === "app-create") return renderBuilder(view);
+  renderIssueBoard(view);
 }
 
 function renderIssueBoard(container) {
@@ -537,31 +574,24 @@ function renderIssueBoard(container) {
         </div>
       </div>
 
-      <div class="board-launcher" aria-label="AIアプリ作成メニュー">
-        <button type="button" data-ai-type="specialized">
-          <span>画像・センサー</span>
-          <strong>特化型AIを作る</strong>
-        </button>
-        <button type="button" data-ai-type="generative">
-          <span>文書・照査</span>
-          <strong>生成AIアプリを作る</strong>
-        </button>
-        <button type="button" data-ai-type="consultation">
-          <span>データなし</span>
-          <strong>相談から作る</strong>
-        </button>
-      </div>
-
       <div class="board-stage-legend">
         ${boardStageOrder.map((stage) => `<span>${boardStages[stage]}</span>`).join("")}
       </div>
 
-      <div class="mindmap-board" data-board-scroll>
-        <div class="board-canvas" data-board-canvas>
-          ${renderBoardRegions(board)}
-          ${renderBoardLinks(board)}
-          ${board.panels.map(renderBoardCard).join("")}
+      <div class="board-workspace">
+        <div class="mindmap-board" data-board-scroll>
+          <div class="board-canvas" data-board-canvas>
+            ${renderBoardRegions(board)}
+            ${renderBoardLinks(board)}
+            ${board.panels.map(renderBoardCard).join("")}
+          </div>
         </div>
+        <aside class="board-side-rail">
+          <button type="button" data-board-add>
+            <strong>＋</strong>
+            <span>パネル追加</span>
+          </button>
+        </aside>
       </div>
     </section>
     ${state.boardModal ? renderBoardModal() : ""}`;
@@ -574,11 +604,13 @@ function renderBoardCard(panel) {
   const color = tag?.color || "#9aa6b2";
   const feasibility = panel.feasibility || "";
   const assessment = panel.assessment || "";
+  const width = panelWidth(panel);
+  const height = panelHeight(panel);
   const tagNames = panel.tags?.length
     ? panel.tags.map((tagId) => tagById(tagId)?.name).filter(Boolean)
     : ["未分類"];
   return html`
-    <article class="board-card" data-board-card="${escapeHtml(panel.id)}" style="left:${panel.x}px; top:${panel.y}px; --card-color:${escapeHtml(color)};">
+    <article class="board-card" data-board-card="${escapeHtml(panel.id)}" style="left:${panel.x}px; top:${panel.y}px; width:${width}px; min-height:${height}px; --card-color:${escapeHtml(color)};">
       <div class="board-card-top">
         <span class="stage-badge">${escapeHtml(boardStages[panel.stage] || "課題")}</span>
         ${feasibility ? `<span class="feasibility-badge">${escapeHtml(feasibility)}</span>` : ""}
@@ -590,17 +622,18 @@ function renderBoardCard(panel) {
       <div class="board-card-tags">
         ${tagNames.map((name) => `<span>${escapeHtml(name)}</span>`).join("")}
       </div>
+      <span class="board-resize-handle" data-board-resize="${escapeHtml(panel.id)}" aria-hidden="true"></span>
     </article>`;
 }
 
 function renderBoardRegions(board) {
-  return board.tags.map((tag) => {
+  return board.tags.filter((tag) => tag.region !== false).map((tag) => {
     const panels = board.panels.filter((panel) => panel.tags?.includes(tag.id));
     if (!panels.length) return "";
     const left = Math.min(...panels.map((panel) => panel.x)) - 28;
     const top = Math.min(...panels.map((panel) => panel.y)) - 42;
-    const right = Math.max(...panels.map((panel) => panel.x + 270)) + 28;
-    const bottom = Math.max(...panels.map((panel) => panel.y + 150)) + 34;
+    const right = Math.max(...panels.map((panel) => panel.x + panelWidth(panel))) + 28;
+    const bottom = Math.max(...panels.map((panel) => panel.y + panelHeight(panel))) + 34;
     return html`
       <section class="tag-region" style="left:${left}px; top:${top}px; width:${right - left}px; height:${bottom - top}px; --tag-color:${escapeHtml(tag.color)};">
         <span>${escapeHtml(tag.name)}</span>
@@ -617,10 +650,12 @@ function renderBoardLinks(board) {
     for (let index = 0; index < panels.length - 1; index += 1) {
       const from = panels[index];
       const to = panels[index + 1];
-      lines.push(`<path d="M ${from.x + 270} ${from.y + 62} C ${from.x + 330} ${from.y + 62}, ${to.x - 60} ${to.y + 62}, ${to.x} ${to.y + 62}" style="--line-color:${escapeHtml(tag.color)}"></path>`);
+      const fromY = from.y + Math.min(78, Math.round(panelHeight(from) / 2));
+      const toY = to.y + Math.min(78, Math.round(panelHeight(to) / 2));
+      lines.push(`<path d="M ${from.x + panelWidth(from)} ${fromY} C ${from.x + panelWidth(from) + 70} ${fromY}, ${to.x - 70} ${toY}, ${to.x} ${toY}" style="--line-color:${escapeHtml(tag.color)}"></path>`);
     }
   });
-  return `<svg class="board-links" viewBox="0 0 2200 1180" preserveAspectRatio="none" aria-hidden="true">${lines.join("")}</svg>`;
+  return `<svg class="board-links" viewBox="0 0 1900 1600" preserveAspectRatio="none" aria-hidden="true">${lines.join("")}</svg>`;
 }
 
 function renderBoardModal() {
@@ -748,11 +783,9 @@ function renderTagManagerModal() {
 }
 
 function wireBoard(container) {
-  container.querySelectorAll("[data-ai-type]").forEach((button) => {
-    button.addEventListener("click", () => startBuilderMode(button.dataset.aiType));
-  });
   container.querySelector("[data-board-layout]")?.addEventListener("click", autoLayoutBoard);
   container.querySelector("[data-board-reset]")?.addEventListener("click", resetBoardState);
+  container.querySelector("[data-board-add]")?.addEventListener("click", addBoardPanelFromButton);
   container.querySelector("[data-board-tags]")?.addEventListener("click", () => {
     state.boardModal = { tagsOnly: true };
     renderApp();
@@ -763,6 +796,7 @@ function wireBoard(container) {
 
 function startBuilderMode(aiType) {
   state.aiType = aiType;
+  state.view = "app-create";
   state.builderStage = "configure";
   if (state.aiType === "specialized" && state.selectedTemplates.size === 0) {
     state.selectedTemplates.add("slope-monitoring");
@@ -772,16 +806,7 @@ function startBuilderMode(aiType) {
 
 function wireBoardCanvas(container) {
   const canvas = container.querySelector("[data-board-canvas]");
-  const scroller = container.querySelector("[data-board-scroll]");
   if (!canvas) return;
-  canvas.addEventListener("click", (event) => {
-    if (event.target.closest("[data-board-card]") || event.target.closest(".tag-region") || event.target.closest(".board-links")) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.round(event.clientX - rect.left + (scroller?.scrollLeft || 0));
-    const y = Math.round(event.clientY - rect.top + (scroller?.scrollTop || 0));
-    addBoardPanelAt(Math.max(40, x - 130), Math.max(60, y - 70));
-  });
-
   container.querySelectorAll("[data-board-card]").forEach((card) => {
     const panel = currentBoard().panels.find((item) => item.id === card.dataset.boardCard);
     if (!panel) return;
@@ -790,26 +815,44 @@ function wireBoardCanvas(container) {
       event.preventDefault();
       event.stopPropagation();
       card.setPointerCapture?.(event.pointerId);
-      start = { x: event.clientX, y: event.clientY, panelX: panel.x, panelY: panel.y, moved: false };
-      card.classList.add("dragging");
+      const resizing = Boolean(event.target.closest("[data-board-resize]"));
+      start = {
+        mode: resizing ? "resize" : "move",
+        x: event.clientX,
+        y: event.clientY,
+        panelX: panel.x,
+        panelY: panel.y,
+        width: panelWidth(panel),
+        height: panelHeight(panel),
+        moved: false
+      };
+      card.classList.add(resizing ? "resizing" : "dragging");
     });
     card.addEventListener("pointermove", (event) => {
       if (!start) return;
       const dx = event.clientX - start.x;
       const dy = event.clientY - start.y;
       if (Math.abs(dx) + Math.abs(dy) > 5) start.moved = true;
-      panel.x = Math.max(20, Math.round(start.panelX + dx));
-      panel.y = Math.max(20, Math.round(start.panelY + dy));
-      card.style.left = `${panel.x}px`;
-      card.style.top = `${panel.y}px`;
+      if (start.mode === "resize") {
+        panel.w = Math.max(230, Math.min(540, Math.round(start.width + dx)));
+        panel.h = Math.max(135, Math.min(440, Math.round(start.height + dy)));
+        card.style.width = `${panel.w}px`;
+        card.style.minHeight = `${panel.h}px`;
+      } else {
+        panel.x = Math.max(20, Math.round(start.panelX + dx));
+        panel.y = Math.max(20, Math.round(start.panelY + dy));
+        card.style.left = `${panel.x}px`;
+        card.style.top = `${panel.y}px`;
+      }
     });
     card.addEventListener("pointerup", () => {
       if (!start) return;
       card.classList.remove("dragging");
-      if (start.moved) {
+      card.classList.remove("resizing");
+      if (start.moved || start.mode === "resize") {
         saveBoardState();
         renderApp();
-      } else {
+      } else if (start.mode === "move") {
         state.boardModal = { panelId: panel.id };
         renderApp();
       }
@@ -855,6 +898,7 @@ function wireBoardModal(container) {
     if (!panel) return;
     state.consultType = panel.tags?.some((tagId) => ["technical", "chubu"].includes(tagId)) ? "specialized" : "generative";
     state.aiType = "consultation";
+    state.view = "app-create";
     state.builderStage = "configure";
     state.consultText = boardPanelPrompt(panel);
     state.boardModal = null;
@@ -919,33 +963,30 @@ function mutateBoardPanelList(field, fallback) {
 }
 
 function addBoardPanelAt(x, y) {
-  const panel = boardPanel(uid("panel"), "新しい課題", "issue", x, y, [], "", "", [], []);
+  const panel = boardPanel(uid("panel"), "新しい課題", "issue", x, y, ["universal"], "", "", [], [], { w: 300, h: 155 });
   currentBoard().panels.push(panel);
   state.boardModal = { panelId: panel.id };
   saveBoardState();
   renderApp();
 }
 
+function addBoardPanelFromButton() {
+  const scroller = document.querySelector("[data-board-scroll]");
+  const x = Math.round((scroller?.scrollLeft || 0) + 90);
+  const y = Math.round((scroller?.scrollTop || 0) + 90);
+  addBoardPanelAt(x, y);
+}
+
+function panelWidth(panel) {
+  return Math.max(230, Math.min(540, Number(panel.w || 300)));
+}
+
+function panelHeight(panel) {
+  return Math.max(135, Math.min(440, Number(panel.h || 155)));
+}
+
 function autoLayoutBoard() {
-  const board = currentBoard();
-  const zones = [
-    { tag: "sales", x: 80, y: 120 },
-    { tag: "technical", x: 1030, y: 120 },
-    { tag: "env", x: 1030, y: 470 },
-    { tag: "chubu", x: 80, y: 640 },
-    { tag: "shared", x: 960, y: 260 },
-    { tag: "public", x: 1350, y: 360 },
-    { tag: "ops", x: 380, y: 620 }
-  ];
-  const counts = {};
-  board.panels.forEach((panel) => {
-    const zone = zones.find((item) => panel.tags?.includes(item.tag)) || { x: 1660, y: 140, tag: "none" };
-    const count = counts[zone.tag] || 0;
-    const stageOffset = Math.max(0, boardStageOrder.indexOf(panel.stage)) * 285;
-    panel.x = zone.x + stageOffset;
-    panel.y = zone.y + (count % 4) * 170;
-    counts[zone.tag] = count + 1;
-  });
+  layoutBoardPanels(currentBoard());
   saveBoardState();
   renderApp();
 }
@@ -974,7 +1015,34 @@ ${(panel.progress || []).map((item) => `- ${item}`).join("\n") || "- 未着手"}
 function renderBuilder(container) {
   const configure = state.builderStage === "configure";
   if (!configure) {
-    renderIssueBoard(container);
+    container.innerHTML = html`
+      <header class="page-head compact-head">
+        <div>
+          <p class="eyebrow">アプリ作成</p>
+          <h1>AIアプリ開発 (デモ版)</h1>
+        </div>
+      </header>
+
+      <section class="mode-picker">
+        <button class="mode-card" type="button" data-ai-type="specialized">
+          <span>画像・センサー・点検</span>
+          <h2>特化型AI開発</h2>
+          <p>類型を選び、データ確認から完成デモまで進めます。</p>
+        </button>
+        <button class="mode-card" type="button" data-ai-type="generative">
+          <span>文書作成・要約・照査</span>
+          <h2>生成AI活用</h2>
+          <p>指示文から、すぐ試せる業務アプリを作ります。</p>
+        </button>
+        <button class="mode-card featured" type="button" data-ai-type="consultation">
+          <span>データなしで相談</span>
+          <h2>相談から作る</h2>
+          <p>相談内容から簡易モックを作り、完成画面まで進めます。</p>
+        </button>
+      </section>`;
+    document.querySelectorAll("[data-ai-type]").forEach((button) => {
+      button.addEventListener("click", () => startBuilderMode(button.dataset.aiType));
+    });
     return;
   }
 
@@ -996,7 +1064,7 @@ function renderBuilder(container) {
 
   container.innerHTML = html`
     <header class="page-head with-back">
-      <button type="button" class="back-button" data-builder-back>← トップへ戻る</button>
+      <button type="button" class="back-button" data-builder-back>← アプリ作成へ戻る</button>
       <div>
         <p class="eyebrow">アプリ作成</p>
         <h1>${modeTitle}</h1>
@@ -1015,6 +1083,7 @@ function renderBuilder(container) {
   document.querySelectorAll("[data-builder-back]").forEach((button) => {
     button.addEventListener("click", () => {
       state.builderStage = "select";
+      state.view = "app-create";
       renderApp();
     });
   });
@@ -2548,7 +2617,7 @@ function renderArchive(container) {
         <h1>作ったアプリ</h1>
         <p>完成デモを開く、削除する。</p>
       </div>
-      <button type="button" class="secondary" data-view="builder">新しく作る</button>
+      <button type="button" class="secondary" data-view="app-create">新しく作る</button>
     </header>
     ${state.projects.length ? `<section class="archive-grid">${cards}</section>` : `<div class="empty">まだ作成したアプリはありません。</div>`}`;
 
@@ -2561,7 +2630,9 @@ function renderArchive(container) {
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
       state.view = button.dataset.view;
-      history.replaceState(null, "", state.view === "archive" ? "#archive" : "#builder");
+      if (state.view === "app-create") state.builderStage = "select";
+      const hash = state.view === "archive" ? "#archive" : state.view === "app-create" ? "#app-create" : "#board";
+      history.replaceState(null, "", hash);
       renderApp();
     });
   });

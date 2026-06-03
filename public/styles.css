@@ -428,7 +428,7 @@ p {
 
 .issue-board-shell {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .board-toolbar {
@@ -449,40 +449,6 @@ p {
   justify-content: flex-end;
 }
 
-.board-launcher {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.board-launcher button {
-  min-height: 76px;
-  background: #fff;
-  color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  text-align: left;
-  box-shadow: 0 10px 24px rgba(15, 46, 90, 0.07);
-}
-
-.board-launcher button:hover {
-  border-color: #9ec7f3;
-  background: #f8fbff;
-}
-
-.board-launcher span {
-  display: block;
-  color: var(--teal);
-  font-size: 12px;
-  font-weight: 900;
-  margin-bottom: 4px;
-}
-
-.board-launcher strong {
-  display: block;
-  font-size: 16px;
-}
-
 .board-stage-legend {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -500,9 +466,16 @@ p {
   text-align: center;
 }
 
+.board-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  gap: 10px;
+  align-items: stretch;
+}
+
 .mindmap-board {
-  height: min(720px, calc(100vh - 258px));
-  min-height: 540px;
+  height: min(760px, calc(100vh - 214px));
+  min-height: 570px;
   overflow: auto;
   border: 1px solid #cbdced;
   border-radius: 8px;
@@ -516,16 +489,17 @@ p {
 
 .board-canvas {
   position: relative;
-  width: 2200px;
-  height: 1180px;
-  cursor: crosshair;
+  width: 1900px;
+  height: 1600px;
+  cursor: default;
+  zoom: 0.78;
 }
 
 .board-links {
   position: absolute;
   inset: 0;
-  width: 2200px;
-  height: 1180px;
+  width: 1900px;
+  height: 1600px;
   pointer-events: none;
   z-index: 1;
 }
@@ -543,7 +517,7 @@ p {
   position: absolute;
   border: 2px solid var(--tag-color);
   border-radius: 18px;
-  background: color-mix(in srgb, var(--tag-color) 7%, transparent);
+  background: color-mix(in srgb, var(--tag-color) 5%, transparent);
   pointer-events: none;
   z-index: 0;
 }
@@ -565,7 +539,6 @@ p {
 .board-card {
   position: absolute;
   z-index: 2;
-  width: 270px;
   min-height: 140px;
   border: 1px solid #d9e5f2;
   border-left: 7px solid var(--card-color);
@@ -576,12 +549,18 @@ p {
   cursor: grab;
   box-shadow: 0 16px 30px rgba(15, 46, 90, 0.12);
   user-select: none;
+  overflow: hidden;
 }
 
-.board-card.dragging {
+.board-card.dragging,
+.board-card.resizing {
   cursor: grabbing;
   z-index: 4;
   box-shadow: 0 24px 48px rgba(15, 46, 90, 0.22);
+}
+
+.board-card.resizing {
+  cursor: nwse-resize;
 }
 
 .board-card-top {
@@ -654,6 +633,50 @@ p {
   padding: 3px 7px;
   font-size: 11px;
   font-weight: 800;
+}
+
+.board-resize-handle {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 16px;
+  height: 16px;
+  border-right: 3px solid rgba(29, 99, 183, 0.55);
+  border-bottom: 3px solid rgba(29, 99, 183, 0.55);
+  cursor: nwse-resize;
+}
+
+.board-side-rail {
+  display: grid;
+}
+
+.board-side-rail button {
+  min-height: 100%;
+  border: 1px dashed #9ec7f3;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: var(--teal-dark);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+}
+
+.board-side-rail strong {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--teal);
+  color: #fff;
+  font-size: 26px;
+}
+
+.board-side-rail span {
+  writing-mode: vertical-rl;
+  font-size: 13px;
+  font-weight: 900;
 }
 
 .board-modal-backdrop {
@@ -2970,7 +2993,7 @@ p {
   .consult-type-switch,
   .consult-scenarios,
   .board-toolbar,
-  .board-launcher,
+  .board-workspace,
   .modal-grid,
   .modal-main-fields {
     display: grid;
@@ -3023,7 +3046,7 @@ p {
   .frame-metrics,
     .train-pipeline,
     .train-metrics,
-    .board-launcher,
+    .board-workspace,
     .modal-grid,
     .modal-main-fields,
     .modal-list-row,
@@ -3032,6 +3055,12 @@ p {
   }
   .mindmap-board {
     min-height: 520px;
+  }
+  .board-side-rail button {
+    min-height: 72px;
+  }
+  .board-side-rail span {
+    writing-mode: horizontal-tb;
   }
   .shell {
     width: min(100% - 20px, 1240px);
