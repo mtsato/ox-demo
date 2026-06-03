@@ -34,6 +34,12 @@ remove_container "${TUNNEL_CONTAINER}"
 
 docker network inspect "${NETWORK}" >/dev/null 2>&1 || docker network create "${NETWORK}" >/dev/null
 mkdir -p "${DATA_DIR}"
+APP_UID="$(id -u)"
+APP_GID="$(id -g)"
+docker run --rm \
+  -v "${DATA_DIR}:/app-data" \
+  node:22-bookworm-slim \
+  chown -R "${APP_UID}:${APP_GID}" /app-data >/dev/null 2>&1 || true
 
 ENV_ARGS=()
 if [[ -f "${ENV_FILE}" ]]; then
@@ -44,6 +50,7 @@ docker run -d \
   --name "${APP_CONTAINER}" \
   --restart unless-stopped \
   --network "${NETWORK}" \
+  --user "${APP_UID}:${APP_GID}" \
   "${ENV_ARGS[@]}" \
   -v "${DATA_DIR}:/app/data" \
   -e HOME=/tmp \
