@@ -182,7 +182,7 @@ const consultationScenarios = [
   }
 ];
 
-const BOARD_VERSION = 7;
+const BOARD_VERSION = 8;
 const BOARD_CANVAS_WIDTH = 1900;
 const BOARD_CANVAS_HEIGHT = 1420;
 const BOARD_AUDIENCE_INTERNAL = "internal";
@@ -196,6 +196,7 @@ const BOARD_RENDER_ZOOM = 0.7;
 const BOARD_ZOOM_MIN = 0.48;
 const BOARD_ZOOM_MAX = 1.15;
 const BOARD_ZOOM_STEP = 0.08;
+const BOARD_LANE_PANEL_MARGIN = 48;
 
 const defaultBoardTags = [
   { id: "proposal-sales", name: "営業・提案", color: "#1d63b7" },
@@ -519,6 +520,10 @@ function normalizeBoardState(board) {
   const normalized = board || defaultBoard();
   let changed = false;
   let needsLayout = false;
+  if (normalized.version !== BOARD_VERSION) {
+    changed = true;
+    needsLayout = true;
+  }
   normalized.version = BOARD_VERSION;
   const defaultTagIds = new Set(defaultBoardTags.map((tag) => tag.id));
   const tagIds = Array.isArray(normalized.tags) ? normalized.tags.map((tag) => tag.id) : [];
@@ -549,6 +554,11 @@ function normalizeBoardState(board) {
     }
   });
   if (needsLayout) layoutBoardPanels(normalized);
+  else {
+    normalized.panels.forEach((panel) => {
+      if (clampPanelToAudience(panel)) changed = true;
+    });
+  }
   return { board: normalized, changed };
 }
 
@@ -584,11 +594,13 @@ function layoutBoardPanels(board) {
     const zone = boardTagZone(board, tagId, audience);
     const key = `${audience}:${tagId}`;
     const count = counts[key] || 0;
-    panel.x = zone.x + (count % 2) * 292;
-    panel.y = zone.y + Math.floor(count / 2) * 176;
     panel.w = panel.w || 274;
     panel.h = panel.h || 148;
     panel.audience = audience;
+    const columns = boardColumnsForZone(zone, panel, audience);
+    panel.x = zone.x + (count % columns) * 292;
+    panel.y = zone.y + Math.floor(count / columns) * 176;
+    clampPanelToAudience(panel);
     counts[key] = count + 1;
   });
   return board;
@@ -625,8 +637,33 @@ function placePanelInTagGroup(board, panel) {
   const audience = panelAudience(panel);
   const zone = boardTagZone(board, tagId, audience);
   const index = board.panels.filter((item) => item.id !== panel.id && panelTagId(item, board) === tagId && panelAudience(item) === audience).length;
-  panel.x = zone.x + (index % 2) * 292;
-  panel.y = zone.y + Math.floor(index / 2) * 176;
+  const columns = boardColumnsForZone(zone, panel, audience);
+  panel.x = zone.x + (index % columns) * 292;
+  panel.y = zone.y + Math.floor(index / columns) * 176;
+  clampPanelToAudience(panel);
+}
+
+function boardColumnsForZone(zone, panel, audience) {
+  if (audience === BOARD_AUDIENCE_INTERNAL) {
+    const secondColumnRight = zone.x + 292 + panelWidth(panel);
+    return secondColumnRight <= BOARD_AUDIENCE_SWITCH_X - BOARD_LANE_PANEL_MARGIN ? 2 : 1;
+  }
+  return 2;
+}
+
+function clampPanelToAudience(panel) {
+  const previousX = panel.x;
+  const previousY = panel.y;
+  const width = panelWidth(panel);
+  const audience = panelAudience(panel);
+  panel.y = Math.max(BOARD_MIN_COORD, Math.round(Number(panel.y || 0)));
+  if (audience === BOARD_AUDIENCE_EXTERNAL) {
+    panel.x = Math.max(BOARD_AUDIENCE_SWITCH_X + BOARD_LANE_PANEL_MARGIN, Math.round(Number(panel.x || 0)));
+  } else {
+    const maxInternalX = BOARD_AUDIENCE_SWITCH_X - BOARD_LANE_PANEL_MARGIN - width;
+    panel.x = Math.max(BOARD_MIN_COORD, Math.min(maxInternalX, Math.round(Number(panel.x || 0))));
+  }
+  return previousX !== panel.x || previousY !== panel.y;
 }
 
 function html(strings, ...values) {
@@ -805,6 +842,7 @@ function setBoardZoom(value) {
     nextScroller.scrollTop = Math.max(0, Math.round(centerY * next - nextScroller.clientHeight / 2));
     state.boardScrollLeft = nextScroller.scrollLeft;
     state.boardScrollTop = nextScroller.scrollTop;
+    updateBoardAudienceOverlay(nextScroller);
   });
 }
 
@@ -1030,7 +1068,7 @@ function renderIssueBoard(container) {
   container.innerHTML = html`
     <section class="issue-board-shell">
       <div class="board-workspace">
-        ${renderBoardAudienceSticky()}
+        ${renderBoardAudienceOverlay()}
         <div class="mindmap-board" data-board-scroll>
           <div class="board-canvas" data-board-canvas style="${boardCanvasStyle(board)}">
             ${renderBoardLanes(board)}
@@ -1089,14 +1127,14 @@ function renderBoardLanes(board) {
     </section>`;
 }
 
-function renderBoardAudienceSticky() {
+function renderBoardAudienceOverlay() {
   return html`
-    <div class="board-audience-sticky" aria-hidden="true">
-      <div class="audience-heading internal">
+    <div class="board-audience-overlay" data-board-audience-overlay aria-hidden="true">
+      <div class="audience-heading internal" data-audience-heading="internal">
         <span>${boardAudienceLabels[BOARD_AUDIENCE_INTERNAL].label}</span>
         <small>${boardAudienceLabels[BOARD_AUDIENCE_INTERNAL].description}</small>
       </div>
-      <div class="audience-heading external">
+      <div class="audience-heading external" data-audience-heading="external">
         <span>${boardAudienceLabels[BOARD_AUDIENCE_EXTERNAL].label}</span>
         <small>${boardAudienceLabels[BOARD_AUDIENCE_EXTERNAL].description}</small>
       </div>
@@ -1292,7 +1330,9 @@ function wireBoardCanvas(container) {
     scroller.addEventListener("scroll", () => {
       state.boardScrollLeft = scroller.scrollLeft;
       state.boardScrollTop = scroller.scrollTop;
+      updateBoardAudienceOverlay(scroller);
     }, { passive: true });
+    updateBoardAudienceOverlay(scroller);
   }
   let panStart = null;
   canvas.addEventListener("pointerdown", (event) => {
@@ -1358,12 +1398,16 @@ function wireBoardCanvas(container) {
       if (start.mode === "resize") {
         panel.w = Math.max(230, Math.min(540, Math.round(start.width + dx)));
         panel.h = Math.max(135, Math.min(440, Math.round(start.height + dy)));
+        clampPanelToAudience(panel);
         card.style.width = `${panel.w}px`;
         card.style.minHeight = `${panel.h}px`;
+        card.style.left = `${boardDisplayX(panel.x)}px`;
+        card.style.top = `${boardDisplayY(panel.y)}px`;
       } else {
-        panel.x = Math.max(BOARD_MIN_COORD, Math.round(start.panelX + dx));
+        panel.x = Math.round(start.panelX + dx);
         panel.y = Math.max(BOARD_MIN_COORD, Math.round(start.panelY + dy));
         panel.audience = boardAudienceFromX(panel.x + panelWidth(panel) / 2);
+        clampPanelToAudience(panel);
         card.style.left = `${boardDisplayX(panel.x)}px`;
         card.style.top = `${boardDisplayY(panel.y)}px`;
         card.dataset.audience = panel.audience;
@@ -1389,6 +1433,25 @@ function wireBoardCanvas(container) {
       start = null;
     });
   });
+}
+
+function updateBoardAudienceOverlay(scroller = document.querySelector("[data-board-scroll]")) {
+  const overlay = document.querySelector("[data-board-audience-overlay]");
+  if (!overlay || !scroller) return;
+  const internal = overlay.querySelector("[data-audience-heading='internal']");
+  const external = overlay.querySelector("[data-audience-heading='external']");
+  const splitScreenX = boardDisplayX(BOARD_AUDIENCE_SWITCH_X) * boardZoom() - scroller.scrollLeft;
+  const viewportWidth = scroller.clientWidth;
+  if (internal) {
+    const internalVisible = splitScreenX > 70;
+    internal.hidden = !internalVisible;
+    internal.style.left = "14px";
+  }
+  if (external) {
+    const externalVisible = splitScreenX < viewportWidth - 70;
+    external.hidden = !externalVisible;
+    external.style.left = `${Math.max(14, Math.round(splitScreenX + 18))}px`;
+  }
 }
 
 function wireBoardModal(container) {
@@ -1481,6 +1544,8 @@ function saveBoardPanelForm(form) {
     currentBoard().panels.push(panel);
   } else if (previousTag !== tagId || previousAudience !== panel.audience) {
     placePanelInTagGroup(currentBoard(), panel);
+  } else {
+    clampPanelToAudience(panel);
   }
   saveBoardState();
   state.boardModal = null;

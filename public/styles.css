@@ -559,20 +559,18 @@ p {
   cursor: grab;
 }
 
-.board-audience-sticky {
+.mindmap-board.panning {
+  cursor: grabbing;
+}
+
+.board-audience-overlay {
   position: absolute;
   top: 13px;
   left: 13px;
   right: 31px;
+  height: 34px;
   z-index: 4;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
   pointer-events: none;
-}
-
-.mindmap-board.panning {
-  cursor: grabbing;
 }
 
 .board-canvas {
@@ -609,18 +607,16 @@ p {
 }
 
 .audience-heading {
+  position: absolute;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: 10px;
   pointer-events: none;
 }
 
-.board-audience-sticky .audience-heading {
-  position: static;
-}
-
-.board-audience-sticky .audience-heading.external {
-  justify-self: start;
+.audience-heading[hidden] {
+  display: none;
 }
 
 .audience-heading span {
