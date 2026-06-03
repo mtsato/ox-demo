@@ -17,8 +17,8 @@ fi
 
 crontab -l 2>/dev/null | grep -v "${CRON_MARK}" > "${CRON_FILE}" || true
 cat >> "${CRON_FILE}" <<EOF
-* * * * PATH=${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin OX_APP_DIR=${APP_DIR} ${DEPLOY_CMD} >> ${DATA_DIR}/deploy-logs/cron.log 2>&1 # ${CRON_MARK}-deploy
-* * * * PATH=${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin OX_APP_DIR=${APP_DIR} ${CODEX_CMD} >> ${DATA_DIR}/codex-logs/cron.log 2>&1 # ${CRON_MARK}-codex
+* * * * * PATH=${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin OX_APP_DIR=${APP_DIR} ${DEPLOY_CMD} >> ${DATA_DIR}/deploy-logs/cron.log 2>&1 # ${CRON_MARK}-deploy
+* * * * * PATH=${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin OX_APP_DIR=${APP_DIR} ${CODEX_CMD} >> ${DATA_DIR}/codex-logs/cron.log 2>&1 # ${CRON_MARK}-codex
 EOF
 crontab "${CRON_FILE}"
 rm -f "${CRON_FILE}"

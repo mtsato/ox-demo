@@ -25,6 +25,8 @@ let state = {
   tsGoal: "forecast",
   tsThreshold: 72,
   tsSensitivity: 66,
+  board: null,
+  boardModal: null,
   polling: null
 };
 
@@ -168,6 +170,55 @@ const consultationScenarios = [
   }
 ];
 
+const boardStages = {
+  issue: "課題",
+  detail: "詳細",
+  solution: "解決方針",
+  progress: "開発進捗"
+};
+
+const boardStageOrder = ["issue", "detail", "solution", "progress"];
+
+function defaultBoard() {
+  return {
+    tags: [
+      { id: "sales", name: "営業支援", color: "#1d63b7" },
+      { id: "technical", name: "技術支援", color: "#0f8b8d" },
+      { id: "shared", name: "シェアードサービス", color: "#7c3aed" },
+      { id: "env", name: "環境・エネルギー本部", color: "#16a34a" },
+      { id: "chubu", name: "中部支社", color: "#f97316" },
+      { id: "public", name: "公開成果物", color: "#dc2626" },
+      { id: "ops", name: "管理・運用", color: "#475569" }
+    ],
+    panels: [
+      boardPanel("p01", "指名願い資料作成支援", "issue", 80, 120, ["sales"], "指名願い資料の作成負担を下げる。", "必要項目、過去資料、技術者情報を整理し、提出用の下書きを作る。", ["過去様式と社員情報を読み込み、記入候補を生成する。"], ["営業支援AIの候補として整理"]),
+      boardPanel("p02", "業務経歴書作成支援", "issue", 80, 290, ["sales"], "TECRISやプロポ戦略室情報と連携する。", "技術者の業務経歴書を案件条件に合わせて短時間で整える。", ["TECRISデータを参照し、案件に合う経歴を抽出する。", "プロポ戦略室の表現ルールをテンプレート化する。"], ["連携先データの確認が必要"]),
+      boardPanel("p03", "積算質問事項の抽出支援", "detail", 380, 190, ["sales"], "企画書と見積項目の不整合を拾う。", "企画書の作業内容と見積項目を照合し、確認すべき質問事項を作る。", ["企画書PDFと見積表を入力し、抜け漏れ・重複・数量確認を出す。"], ["生成AI活用アプリとして試作しやすい"]),
+      boardPanel("p04", "NETIS技術検索", "solution", 690, 160, ["sales"], "API制約を考慮した検索支援。", "NETIS技術を案件条件から探し、候補技術の要点と適用理由を示す。", ["公開情報の収集方式を確認する。", "まずは手入力キーワード検索と要約でモック化する。"], ["API可否の調査待ち"]),
+      boardPanel("p05", "シェアードサービス準備室との連携", "progress", 990, 230, ["shared", "ops"], "四戸統括部長経由で相談済み。", "社内横断の業務支援テーマはシェアードサービス準備室と連携する。", ["相談経路を整理し、対象業務を優先順位付けする。"], ["メールにて相談済み"]),
+
+      boardPanel("p06", "災害写真から対応策を提示", "issue", 1120, 120, ["technical"], "災害写真を読み、留意点や対応策を出す。", "現場写真から被災状況を分類し、初動対応・安全確認・追加調査の観点を示す。", ["写真1枚から被災種別、危険要因、現地確認項目を出す。"], ["相談モードの画像AIでデモ化しやすい"]),
+      boardPanel("p07", "災害前写真から危険箇所抽出", "detail", 1420, 120, ["technical"], "平常時画像からリスク候補を拾う。", "災害前の斜面・河川・構造物写真から、危険箇所候補を見える化する。", ["地形・植生・水みち・劣化兆候の1ラベル検知から始める。"], ["デモ画像と検知結果の整合性が重要"]),
+      boardPanel("p08", "管理技術者のAI秘書", "issue", 1120, 300, ["env", "ops"], "管理技術者の事務負担を減らす。", "打合せ記録簿、メール、電話メモ、提出期限から対応タスクを整理し、アラートを出す。", ["記録簿から対応事項・期限・担当を抽出する。", "メールや電話メモからタスクを追加できるようにする。"], ["環境・エネルギー本部の重点候補"]),
+      boardPanel("p09", "公開用成果物の自動墨入れ", "solution", 1420, 330, ["public", "technical"], "個人情報や重要種位置を自動で隠す。", "公開用成果物の氏名、顔、重要種位置、図面上の機微情報を検出して墨入れ候補を作る。", ["PDF・画像・図面の対象別に検出ラベルを絞る。", "人が承認してから出力するUIにする。"], ["国交省業務では優先度が高い"]),
+      boardPanel("p10", "猛禽類調査結果自動入力", "detail", 1120, 520, ["env", "technical"], "紙記録をGISとExcelに変換する。", "紙の調査結果をスキャンし、観察地点・時刻・種名・行動を読み取ってGIS/Excelへ整理する。", ["OCRと表抽出を組み合わせる。", "個性的な文字への対応精度を検証する。"], ["LECHERCA Scanの適用可否を確認"]),
+      boardPanel("p11", "公開用成果物自動作成", "issue", 1420, 520, ["env", "public"], "公開資料作成の負担を軽減する。", "氏名、顔、重要種の確認位置が分かる文章・図面などを自動で確認し、墨消し候補を示す。", ["文書・写真・図面を横断して公開リスクをチェックする。"], ["技術支援AIと重複テーマとして統合検討"]),
+
+      boardPanel("p12", "基礎点・技術者評価支援", "issue", 80, 650, ["chubu", "sales"], "管理技術者・担当技術者の基礎点を確認する。", "プロポ戦略室との連携が必要な、技術者評価・基礎点の確認支援。", ["評価条件と技術者情報を入力し、候補者比較を出す。"], ["中部支社メモから登録"]),
+      boardPanel("p13", "個人目標の定量評価支援", "detail", 380, 670, ["chubu", "ops"], "人事制度改革に合わせた支援。", "会社システムと連携し、個人目標の定量評価をAIで下支えする。最後は人が確認する。", ["評価データの取得範囲を整理する。", "本人確認用の説明可能な出力にする。"], ["連携システムの確認が必要"]),
+      boardPanel("p14", "民間案件の納期・精算漏れ管理", "solution", 690, 690, ["chubu", "ops"], "注文書が多い案件の回収遅れを防ぐ。", "社内工期は1つでも細かい注文書が多い案件で、納期管理・精算漏れ確認を行う。", ["WonderWeb連携またはCSV取り込みで試作する。", "未回収・期限超過をAI秘書として通知する。"], ["業務管理系デモとして有効"]),
+      boardPanel("p15", "道路事前通行規制AI", "issue", 990, 690, ["chubu", "technical"], "連続雨量から規制判断を支援する。", "現在はマクロで時間がかかる規制判断を、雨量データと基準値から短時間で確認する。", ["雨量CSV、規制基準、観測地点を入力して判定する。", "将来雨量の予測レンジを重ねる。"], ["時系列AIデモに適する"]),
+      boardPanel("p16", "河川管理の雨量・水位相関AI", "detail", 1290, 720, ["chubu", "technical"], "雨量と河川水位の相関を予測に使う。", "タンクモデル活用や河川管理のため、雨量と水位の関係を可視化・予測する。", ["水位計と雨量計の位置関係を表示する。", "6時間後・24時間後の予測を出す。"], ["洪水アラート相談と接続可能"]),
+      boardPanel("p17", "ボーリングコア・ボアホールAI解析", "solution", 1590, 700, ["chubu", "technical"], "面構造や亀裂の酸化程度を解析する。", "ボーリングコア写真とボアホール画像から、未固結の亀裂面や酸化程度を把握し、3次元化まで検討する。", ["まずは亀裂面1ラベルの検出から始める。", "3D化はPoC後半の検討項目にする。"], ["画像AIとして難度は高め"]),
+      boardPanel("p18", "地すべりすべり面・擦痕解析", "progress", 1890, 720, ["chubu", "technical"], "すべり面評価にAIを使う。", "すべり面の評価や擦痕情報を写真・記録から読み取り、評価支援につなげる。", ["擦痕の方向、粗さ、連続性を画像から抽出する。", "専門家の教師データ作成が必要。"], ["技術検証テーマとして保持"])
+    ]
+  };
+}
+
+function boardPanel(id, title, stage, x, y, tags, summary, detail, solutions = [], progress = []) {
+  return { id, title, stage, x, y, tags, summary, detail, solutions, progress };
+}
+
 function html(strings, ...values) {
   return strings.reduce((out, item, index) => out + item + (values[index] ?? ""), "");
 }
@@ -179,6 +230,45 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function loadBoardState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("ox-ai-issue-board") || "null");
+    if (saved?.tags?.length && saved?.panels?.length) return saved;
+  } catch {
+    // Use the seeded board when local storage is unavailable or malformed.
+  }
+  return defaultBoard();
+}
+
+function saveBoardState() {
+  if (!state.board) return;
+  localStorage.setItem("ox-ai-issue-board", JSON.stringify(state.board));
+}
+
+function resetBoardState() {
+  state.board = defaultBoard();
+  state.boardModal = null;
+  saveBoardState();
+  renderApp();
+}
+
+function uid(prefix = "id") {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function currentBoard() {
+  if (!state.board) state.board = loadBoardState();
+  return state.board;
+}
+
+function tagById(tagId) {
+  return currentBoard().tags.find((tag) => tag.id === tagId);
+}
+
+function primaryTag(panel) {
+  return panel.tags?.length ? tagById(panel.tags[0]) : null;
 }
 
 async function api(path, options = {}) {
@@ -198,6 +288,7 @@ async function api(path, options = {}) {
 async function init() {
   const me = await api("/api/me");
   state.me = me;
+  state.board = loadBoardState();
   const archiveMatch = /^#archive:?([^/]*)?/.exec(location.hash);
   state.view = archiveMatch ? "archive" : "builder";
   if (archiveMatch?.[1]) state.activeProjectId = archiveMatch[1];
@@ -273,7 +364,7 @@ function renderApp() {
           </div>
         </button>
         <div class="nav-tabs">
-          ${tabButton("builder", "アプリを作る")}
+          ${tabButton("builder", "課題ボード")}
           ${tabButton("archive", "作ったアプリ")}
         </div>
         <button class="ghost" id="logoutBtn">ログアウト</button>
@@ -288,6 +379,7 @@ function renderApp() {
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
       state.view = button.dataset.view;
+      if (state.view === "builder") state.builderStage = "select";
       history.replaceState(null, "", state.view === "archive" ? "#archive" : "#builder");
       renderApp();
     });
@@ -305,44 +397,444 @@ function renderCurrentView() {
   renderBuilder(view);
 }
 
+function renderIssueBoard(container) {
+  const board = currentBoard();
+  container.innerHTML = html`
+    <section class="issue-board-shell">
+      <div class="board-toolbar">
+        <div>
+          <p class="eyebrow">課題ボード</p>
+          <h1>AI活用テーマを整理する</h1>
+        </div>
+        <div class="board-toolbar-actions">
+          <button type="button" class="ghost" data-board-layout>自動整列</button>
+          <button type="button" class="ghost" data-board-tags>タグ編集</button>
+          <button type="button" class="secondary" data-board-reset>初期状態に戻す</button>
+        </div>
+      </div>
+
+      <div class="board-launcher" aria-label="AIアプリ作成メニュー">
+        <button type="button" data-ai-type="specialized">
+          <span>画像・センサー</span>
+          <strong>特化型AIを作る</strong>
+        </button>
+        <button type="button" data-ai-type="generative">
+          <span>文書・照査</span>
+          <strong>生成AIアプリを作る</strong>
+        </button>
+        <button type="button" data-ai-type="consultation">
+          <span>データなし</span>
+          <strong>相談から作る</strong>
+        </button>
+      </div>
+
+      <div class="board-stage-legend">
+        ${boardStageOrder.map((stage) => `<span>${boardStages[stage]}</span>`).join("")}
+      </div>
+
+      <div class="mindmap-board" data-board-scroll>
+        <div class="board-canvas" data-board-canvas>
+          ${renderBoardRegions(board)}
+          ${renderBoardLinks(board)}
+          ${board.panels.map(renderBoardCard).join("")}
+        </div>
+      </div>
+    </section>
+    ${state.boardModal ? renderBoardModal() : ""}`;
+
+  wireBoard(container);
+}
+
+function renderBoardCard(panel) {
+  const tag = primaryTag(panel);
+  const color = tag?.color || "#9aa6b2";
+  const tagNames = panel.tags?.length
+    ? panel.tags.map((tagId) => tagById(tagId)?.name).filter(Boolean)
+    : ["未分類"];
+  return html`
+    <article class="board-card" data-board-card="${escapeHtml(panel.id)}" style="left:${panel.x}px; top:${panel.y}px; --card-color:${escapeHtml(color)};">
+      <div class="board-card-top">
+        <span class="stage-badge">${escapeHtml(boardStages[panel.stage] || "課題")}</span>
+        <span class="tag-dot" aria-hidden="true"></span>
+      </div>
+      <h2>${escapeHtml(panel.title)}</h2>
+      <p>${escapeHtml(panel.summary || panel.detail || "内容を入力してください。")}</p>
+      <div class="board-card-tags">
+        ${tagNames.map((name) => `<span>${escapeHtml(name)}</span>`).join("")}
+      </div>
+    </article>`;
+}
+
+function renderBoardRegions(board) {
+  return board.tags.map((tag) => {
+    const panels = board.panels.filter((panel) => panel.tags?.includes(tag.id));
+    if (!panels.length) return "";
+    const left = Math.min(...panels.map((panel) => panel.x)) - 28;
+    const top = Math.min(...panels.map((panel) => panel.y)) - 42;
+    const right = Math.max(...panels.map((panel) => panel.x + 270)) + 28;
+    const bottom = Math.max(...panels.map((panel) => panel.y + 150)) + 34;
+    return html`
+      <section class="tag-region" style="left:${left}px; top:${top}px; width:${right - left}px; height:${bottom - top}px; --tag-color:${escapeHtml(tag.color)};">
+        <span>${escapeHtml(tag.name)}</span>
+      </section>`;
+  }).join("");
+}
+
+function renderBoardLinks(board) {
+  const lines = [];
+  board.tags.forEach((tag) => {
+    const panels = board.panels
+      .filter((panel) => panel.tags?.includes(tag.id))
+      .sort((a, b) => boardStageOrder.indexOf(a.stage) - boardStageOrder.indexOf(b.stage) || a.y - b.y);
+    for (let index = 0; index < panels.length - 1; index += 1) {
+      const from = panels[index];
+      const to = panels[index + 1];
+      lines.push(`<path d="M ${from.x + 270} ${from.y + 62} C ${from.x + 330} ${from.y + 62}, ${to.x - 60} ${to.y + 62}, ${to.x} ${to.y + 62}" style="--line-color:${escapeHtml(tag.color)}"></path>`);
+    }
+  });
+  return `<svg class="board-links" viewBox="0 0 2200 1180" preserveAspectRatio="none" aria-hidden="true">${lines.join("")}</svg>`;
+}
+
+function renderBoardModal() {
+  if (state.boardModal?.tagsOnly) return renderTagManagerModal();
+  const panel = currentBoard().panels.find((item) => item.id === state.boardModal.panelId);
+  if (!panel) return "";
+  const stageOptions = boardStageOrder
+    .map((stage) => `<option value="${stage}" ${panel.stage === stage ? "selected" : ""}>${boardStages[stage]}</option>`)
+    .join("");
+  const tagChecks = currentBoard().tags.map((tag) => `
+    <label class="tag-check" style="--tag-color:${escapeHtml(tag.color)}">
+      <input type="checkbox" name="tags" value="${escapeHtml(tag.id)}" ${panel.tags?.includes(tag.id) ? "checked" : ""}>
+      <span>${escapeHtml(tag.name)}</span>
+    </label>`).join("");
+  return html`
+    <div class="board-modal-backdrop" data-board-close>
+      <section class="board-modal" role="dialog" aria-modal="true" aria-label="課題パネル編集">
+        <form id="boardPanelForm">
+          <div class="modal-head">
+            <div>
+              <p class="eyebrow">パネル編集</p>
+              <h2>${escapeHtml(panel.title || "新しい課題")}</h2>
+            </div>
+            <button type="button" class="ghost" data-board-close-button>閉じる</button>
+          </div>
+          <div class="modal-grid">
+            <div class="modal-main-fields">
+              <label class="field">
+                <span>名称</span>
+                <input name="title" value="${escapeHtml(panel.title)}">
+              </label>
+              <label class="field">
+                <span>分類</span>
+                <select name="stage">${stageOptions}</select>
+              </label>
+              <label class="field">
+                <span>要約</span>
+                <textarea name="summary">${escapeHtml(panel.summary || "")}</textarea>
+              </label>
+              <label class="field">
+                <span>詳細</span>
+                <textarea name="detail">${escapeHtml(panel.detail || "")}</textarea>
+              </label>
+            </div>
+            <aside class="modal-side">
+              <h3>タグ</h3>
+              <div class="tag-check-grid">${tagChecks}</div>
+              <button type="button" class="ghost full" data-open-tag-editor>タグを編集</button>
+            </aside>
+          </div>
+
+          <div class="modal-list-block">
+            <div class="modal-list-head">
+              <h3>解決方針</h3>
+              <button type="button" class="secondary" data-add-solution>追加</button>
+            </div>
+            <div class="modal-list">
+              ${(panel.solutions || []).map((item, index) => listInput("solution", item, index)).join("") || "<p class=\"empty-line\">まだありません。</p>"}
+            </div>
+          </div>
+
+          <div class="modal-list-block">
+            <div class="modal-list-head">
+              <h3>開発進捗</h3>
+              <button type="button" class="secondary" data-add-progress>追加</button>
+            </div>
+            <div class="modal-list">
+              ${(panel.progress || []).map((item, index) => listInput("progress", item, index)).join("") || "<p class=\"empty-line\">まだありません。</p>"}
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="danger" data-delete-panel>削除</button>
+            <button type="button" class="ghost" data-start-from-panel>この課題からAIアプリを作る</button>
+            <button type="submit">保存</button>
+          </div>
+        </form>
+      </section>
+    </div>`;
+}
+
+function listInput(type, value, index) {
+  const label = type === "solution" ? "方針" : "進捗";
+  return html`
+    <div class="modal-list-row">
+      <input name="${type}-${index}" value="${escapeHtml(value)}" aria-label="${label}${index + 1}">
+      <button type="button" class="danger" data-list-delete="${type}" data-list-index="${index}">削除</button>
+    </div>`;
+}
+
+function renderTagManagerModal() {
+  const tags = currentBoard().tags;
+  return html`
+    <div class="board-modal-backdrop" data-board-close>
+      <section class="board-modal tag-modal" role="dialog" aria-modal="true" aria-label="タグ編集">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">タグ編集</p>
+            <h2>グルーピングを調整する</h2>
+          </div>
+          <button type="button" class="ghost" data-board-close-button>閉じる</button>
+        </div>
+        <div class="tag-editor-list">
+          ${tags.map((tag) => `
+            <div class="tag-editor-row" data-tag-row="${escapeHtml(tag.id)}">
+              <input data-tag-name="${escapeHtml(tag.id)}" value="${escapeHtml(tag.name)}" aria-label="タグ名">
+              <input data-tag-color="${escapeHtml(tag.id)}" type="color" value="${escapeHtml(tag.color)}" aria-label="タグ色">
+              <button type="button" class="danger" data-tag-delete="${escapeHtml(tag.id)}">削除</button>
+            </div>`).join("")}
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="secondary" data-tag-add>タグを追加</button>
+          <button type="button" data-board-close-button>完了</button>
+        </div>
+      </section>
+    </div>`;
+}
+
+function wireBoard(container) {
+  container.querySelectorAll("[data-ai-type]").forEach((button) => {
+    button.addEventListener("click", () => startBuilderMode(button.dataset.aiType));
+  });
+  container.querySelector("[data-board-layout]")?.addEventListener("click", autoLayoutBoard);
+  container.querySelector("[data-board-reset]")?.addEventListener("click", resetBoardState);
+  container.querySelector("[data-board-tags]")?.addEventListener("click", () => {
+    state.boardModal = { tagsOnly: true };
+    renderApp();
+  });
+  wireBoardCanvas(container);
+  wireBoardModal(container);
+}
+
+function startBuilderMode(aiType) {
+  state.aiType = aiType;
+  state.builderStage = "configure";
+  if (state.aiType === "specialized" && state.selectedTemplates.size === 0) {
+    state.selectedTemplates.add("slope-monitoring");
+  }
+  renderApp();
+}
+
+function wireBoardCanvas(container) {
+  const canvas = container.querySelector("[data-board-canvas]");
+  const scroller = container.querySelector("[data-board-scroll]");
+  if (!canvas) return;
+  canvas.addEventListener("click", (event) => {
+    if (event.target.closest("[data-board-card]") || event.target.closest(".tag-region") || event.target.closest(".board-links")) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round(event.clientX - rect.left + (scroller?.scrollLeft || 0));
+    const y = Math.round(event.clientY - rect.top + (scroller?.scrollTop || 0));
+    addBoardPanelAt(Math.max(40, x - 130), Math.max(60, y - 70));
+  });
+
+  container.querySelectorAll("[data-board-card]").forEach((card) => {
+    const panel = currentBoard().panels.find((item) => item.id === card.dataset.boardCard);
+    if (!panel) return;
+    let start = null;
+    card.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      card.setPointerCapture?.(event.pointerId);
+      start = { x: event.clientX, y: event.clientY, panelX: panel.x, panelY: panel.y, moved: false };
+      card.classList.add("dragging");
+    });
+    card.addEventListener("pointermove", (event) => {
+      if (!start) return;
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      if (Math.abs(dx) + Math.abs(dy) > 5) start.moved = true;
+      panel.x = Math.max(20, Math.round(start.panelX + dx));
+      panel.y = Math.max(20, Math.round(start.panelY + dy));
+      card.style.left = `${panel.x}px`;
+      card.style.top = `${panel.y}px`;
+    });
+    card.addEventListener("pointerup", () => {
+      if (!start) return;
+      card.classList.remove("dragging");
+      if (start.moved) {
+        saveBoardState();
+        renderApp();
+      } else {
+        state.boardModal = { panelId: panel.id };
+        renderApp();
+      }
+      start = null;
+    });
+  });
+}
+
+function wireBoardModal(container) {
+  const modal = container.querySelector(".board-modal-backdrop");
+  if (!modal) return;
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-board-close-button]")) {
+      state.boardModal = null;
+      renderApp();
+    }
+  });
+  modal.querySelector("[data-open-tag-editor]")?.addEventListener("click", () => {
+    state.boardModal = { tagsOnly: true };
+    renderApp();
+  });
+  modal.querySelector("[data-add-solution]")?.addEventListener("click", () => mutateBoardPanelList("solutions", "新しい解決方針"));
+  modal.querySelector("[data-add-progress]")?.addEventListener("click", () => mutateBoardPanelList("progress", "新しい進捗"));
+  modal.querySelectorAll("[data-list-delete]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const field = button.dataset.listDelete === "solution" ? "solutions" : "progress";
+      const panel = currentBoard().panels.find((item) => item.id === state.boardModal?.panelId);
+      if (!panel) return;
+      panel[field] = (panel[field] || []).filter((_, index) => index !== Number(button.dataset.listIndex));
+      saveBoardState();
+      renderApp();
+    });
+  });
+  modal.querySelector("[data-delete-panel]")?.addEventListener("click", () => {
+    const id = state.boardModal?.panelId;
+    currentBoard().panels = currentBoard().panels.filter((panel) => panel.id !== id);
+    state.boardModal = null;
+    saveBoardState();
+    renderApp();
+  });
+  modal.querySelector("[data-start-from-panel]")?.addEventListener("click", () => {
+    const panel = currentBoard().panels.find((item) => item.id === state.boardModal?.panelId);
+    if (!panel) return;
+    state.consultType = panel.tags?.some((tagId) => ["technical", "chubu"].includes(tagId)) ? "specialized" : "generative";
+    state.aiType = "consultation";
+    state.builderStage = "configure";
+    state.consultText = boardPanelPrompt(panel);
+    state.boardModal = null;
+    renderApp();
+  });
+  modal.querySelector("#boardPanelForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveBoardPanelForm(event.currentTarget);
+  });
+  modal.querySelector("[data-tag-add]")?.addEventListener("click", () => {
+    currentBoard().tags.push({ id: uid("tag"), name: "新しいタグ", color: "#64748b" });
+    saveBoardState();
+    renderApp();
+  });
+  modal.querySelectorAll("[data-tag-delete]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.tagDelete;
+      currentBoard().tags = currentBoard().tags.filter((tag) => tag.id !== id);
+      currentBoard().panels.forEach((panel) => {
+        panel.tags = (panel.tags || []).filter((tagId) => tagId !== id);
+      });
+      saveBoardState();
+      renderApp();
+    });
+  });
+  modal.querySelectorAll("[data-tag-name], [data-tag-color]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const id = input.dataset.tagName || input.dataset.tagColor;
+      const tag = tagById(id);
+      if (!tag) return;
+      if (input.dataset.tagName) tag.name = input.value;
+      if (input.dataset.tagColor) tag.color = input.value;
+      saveBoardState();
+    });
+  });
+}
+
+function saveBoardPanelForm(form) {
+  const panel = currentBoard().panels.find((item) => item.id === state.boardModal?.panelId);
+  if (!panel) return;
+  const data = new FormData(form);
+  panel.title = String(data.get("title") || "新しい課題").trim();
+  panel.stage = String(data.get("stage") || "issue");
+  panel.summary = String(data.get("summary") || "").trim();
+  panel.detail = String(data.get("detail") || "").trim();
+  panel.tags = data.getAll("tags").map(String);
+  panel.solutions = Array.from(form.querySelectorAll("input[name^='solution-']")).map((input) => input.value.trim()).filter(Boolean);
+  panel.progress = Array.from(form.querySelectorAll("input[name^='progress-']")).map((input) => input.value.trim()).filter(Boolean);
+  saveBoardState();
+  state.boardModal = null;
+  renderApp();
+}
+
+function mutateBoardPanelList(field, fallback) {
+  const panel = currentBoard().panels.find((item) => item.id === state.boardModal?.panelId);
+  if (!panel) return;
+  panel[field] = [...(panel[field] || []), fallback];
+  saveBoardState();
+  renderApp();
+}
+
+function addBoardPanelAt(x, y) {
+  const panel = boardPanel(uid("panel"), "新しい課題", "issue", x, y, [], "", "", [], []);
+  currentBoard().panels.push(panel);
+  state.boardModal = { panelId: panel.id };
+  saveBoardState();
+  renderApp();
+}
+
+function autoLayoutBoard() {
+  const board = currentBoard();
+  const zones = [
+    { tag: "sales", x: 80, y: 120 },
+    { tag: "technical", x: 1030, y: 120 },
+    { tag: "env", x: 1030, y: 470 },
+    { tag: "chubu", x: 80, y: 640 },
+    { tag: "shared", x: 960, y: 260 },
+    { tag: "public", x: 1350, y: 360 },
+    { tag: "ops", x: 380, y: 620 }
+  ];
+  const counts = {};
+  board.panels.forEach((panel) => {
+    const zone = zones.find((item) => panel.tags?.includes(item.tag)) || { x: 1660, y: 140, tag: "none" };
+    const count = counts[zone.tag] || 0;
+    const stageOffset = Math.max(0, boardStageOrder.indexOf(panel.stage)) * 285;
+    panel.x = zone.x + stageOffset;
+    panel.y = zone.y + (count % 4) * 170;
+    counts[zone.tag] = count + 1;
+  });
+  saveBoardState();
+  renderApp();
+}
+
+function boardPanelPrompt(panel) {
+  const tags = (panel.tags || []).map((tagId) => tagById(tagId)?.name).filter(Boolean).join("、") || "未分類";
+  return `${panel.title}
+
+分類: ${boardStages[panel.stage] || "課題"}
+タグ: ${tags}
+
+詳細:
+${panel.detail || panel.summary || "詳細未入力"}
+
+解決方針:
+${(panel.solutions || []).map((item) => `- ${item}`).join("\n") || "- 未整理"}
+
+開発進捗:
+${(panel.progress || []).map((item) => `- ${item}`).join("\n") || "- 未着手"}
+
+この内容から、ワークショップで触れるAIアプリの完成画面まで作成してください。`;
+}
+
 function renderBuilder(container) {
   const configure = state.builderStage === "configure";
   if (!configure) {
-    container.innerHTML = html`
-      <header class="page-head compact-head">
-        <div>
-          <p class="eyebrow">アプリ作成</p>
-          <h1>AIアプリ開発 (デモ版)</h1>
-        </div>
-      </header>
-
-      <section class="mode-picker">
-        <button class="mode-card" type="button" data-ai-type="specialized">
-          <span>画像・センサー・点検</span>
-          <h2>特化型AI開発</h2>
-          <p>類型を選び、データ確認から完成デモまで進めます。</p>
-        </button>
-        <button class="mode-card" type="button" data-ai-type="generative">
-          <span>文書作成・要約・照査</span>
-          <h2>生成AI活用</h2>
-          <p>指示文から、すぐ試せる業務アプリを作ります。</p>
-        </button>
-        <button class="mode-card featured" type="button" data-ai-type="consultation">
-          <span>データなしで相談</span>
-          <h2>相談から作る</h2>
-          <p>相談内容から簡易モックを作り、完成画面まで進めます。</p>
-        </button>
-      </section>`;
-    document.querySelectorAll("[data-ai-type]").forEach((button) => {
-      button.addEventListener("click", () => {
-        state.aiType = button.dataset.aiType;
-        state.builderStage = "configure";
-        if (state.aiType === "specialized" && state.selectedTemplates.size === 0) {
-          state.selectedTemplates.add("slope-monitoring");
-        }
-        renderApp();
-      });
-    });
+    renderIssueBoard(container);
     return;
   }
 
