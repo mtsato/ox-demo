@@ -184,6 +184,14 @@ const consultationScenarios = [
 const BOARD_VERSION = 6;
 const BOARD_CANVAS_WIDTH = 1900;
 const BOARD_CANVAS_HEIGHT = 1420;
+const BOARD_AUDIENCE_INTERNAL = "internal";
+const BOARD_AUDIENCE_EXTERNAL = "external";
+const BOARD_AUDIENCE_LANE_WIDTH = 1100;
+const BOARD_AUDIENCE_GAP = 170;
+const BOARD_EXTERNAL_X = BOARD_AUDIENCE_LANE_WIDTH + BOARD_AUDIENCE_GAP;
+const BOARD_AUDIENCE_SWITCH_X = BOARD_AUDIENCE_LANE_WIDTH + BOARD_AUDIENCE_GAP / 2;
+const BOARD_LANE_TOP = 60;
+const BOARD_RENDER_ZOOM = 0.7;
 
 const defaultBoardTags = [
   { id: "sales-admin", name: "営業管理", color: "#1d63b7" },
@@ -215,6 +223,40 @@ const defaultPanelTags = {
   p18: "boring",
   p19: "sales-admin",
   p20: "boring"
+};
+
+const defaultPanelAudience = {
+  p01: BOARD_AUDIENCE_INTERNAL,
+  p02: BOARD_AUDIENCE_INTERNAL,
+  p03: BOARD_AUDIENCE_INTERNAL,
+  p04: BOARD_AUDIENCE_INTERNAL,
+  p05: BOARD_AUDIENCE_INTERNAL,
+  p06: BOARD_AUDIENCE_EXTERNAL,
+  p07: BOARD_AUDIENCE_EXTERNAL,
+  p08: BOARD_AUDIENCE_INTERNAL,
+  p09: BOARD_AUDIENCE_INTERNAL,
+  p10: BOARD_AUDIENCE_INTERNAL,
+  p11: BOARD_AUDIENCE_INTERNAL,
+  p12: BOARD_AUDIENCE_INTERNAL,
+  p13: BOARD_AUDIENCE_INTERNAL,
+  p14: BOARD_AUDIENCE_INTERNAL,
+  p15: BOARD_AUDIENCE_EXTERNAL,
+  p16: BOARD_AUDIENCE_EXTERNAL,
+  p17: BOARD_AUDIENCE_EXTERNAL,
+  p18: BOARD_AUDIENCE_EXTERNAL,
+  p19: BOARD_AUDIENCE_INTERNAL,
+  p20: BOARD_AUDIENCE_EXTERNAL
+};
+
+const boardAudienceLabels = {
+  [BOARD_AUDIENCE_INTERNAL]: {
+    label: "社内",
+    description: "内業の効率化・社内業務支援"
+  },
+  [BOARD_AUDIENCE_EXTERNAL]: {
+    label: "社外",
+    description: "売れる技術・技術提案に組み込めるAI"
+  }
 };
 
 const defaultPanelDiscussion = {
@@ -449,6 +491,7 @@ function applyBoardReviewComments(board) {
 
   applyPanelDiscussionDefaults(board);
   applyPanelTagGroups(board);
+  applyPanelAudienceDefaults(board);
   layoutBoardPanels(board);
   return board;
 }
@@ -458,12 +501,46 @@ function boardPanel(id, title, stage, x, y, tags, summary, detail, solutions = [
   return { id, title, stage, x, y, tags, content, summary, detail, solutions, progress, ...meta };
 }
 
+function normalizeBoardState(board) {
+  const normalized = board || defaultBoard();
+  let changed = false;
+  let needsAudienceLayout = false;
+  normalized.version = BOARD_VERSION;
+  if (!Array.isArray(normalized.tags) || !normalized.tags.length) {
+    normalized.tags = defaultBoardTags.map((tag) => ({ ...tag }));
+    changed = true;
+  }
+  if (!Array.isArray(normalized.panels)) normalized.panels = [];
+  normalized.panels.forEach((panel) => {
+    const tagId = panelTagId(panel, normalized);
+    if (!panel.tag || !Array.isArray(panel.tags) || panel.tags[0] !== tagId) {
+      panel.tag = tagId;
+      panel.tags = [tagId];
+      changed = true;
+    }
+    panel.content = panel.content || panel.detail || panel.summary || "";
+    if (![BOARD_AUDIENCE_INTERNAL, BOARD_AUDIENCE_EXTERNAL].includes(panel.audience)) {
+      panel.audience = defaultAudienceForPanel(panel, normalized);
+      needsAudienceLayout = true;
+      changed = true;
+    }
+  });
+  if (needsAudienceLayout) layoutBoardPanels(normalized);
+  return { board: normalized, changed };
+}
+
 function applyPanelTagGroups(board) {
   board.panels.forEach((panel) => {
-    const tagId = defaultPanelTags[panel.id] || panelTagId(panel) || defaultBoardTags[0].id;
+    const tagId = defaultPanelTags[panel.id] || panelTagId(panel, board) || defaultBoardTags[0].id;
     panel.tag = tagId;
     panel.tags = [tagId];
     panel.content = panel.content || panel.detail || panel.summary || "";
+  });
+}
+
+function applyPanelAudienceDefaults(board) {
+  board.panels.forEach((panel) => {
+    panel.audience = defaultAudienceForPanel(panel, board);
   });
 }
 
@@ -479,35 +556,50 @@ function applyPanelDiscussionDefaults(board) {
 function layoutBoardPanels(board) {
   const counts = {};
   board.panels.forEach((panel) => {
-    const tagId = panelTagId(panel);
-    const zone = boardTagZone(board, tagId);
-    const count = counts[tagId] || 0;
+    const tagId = panelTagId(panel, board);
+    const audience = panelAudience(panel);
+    const zone = boardTagZone(board, tagId, audience);
+    const key = `${audience}:${tagId}`;
+    const count = counts[key] || 0;
     panel.x = zone.x + (count % 2) * 292;
     panel.y = zone.y + Math.floor(count / 2) * 176;
     panel.w = panel.w || 274;
     panel.h = panel.h || 148;
-    counts[tagId] = count + 1;
+    panel.audience = audience;
+    counts[key] = count + 1;
   });
   return board;
 }
 
-function boardTagZone(board, tagId) {
-  const zoneByTag = {
-    "sales-admin": { x: 70, y: 115 },
-    "env-energy": { x: 675, y: 115 },
-    "public-redaction": { x: 1280, y: 115 },
-    "tohoku": { x: 70, y: 720 },
-    "chubu": { x: 675, y: 720 },
-    boring: { x: 1280, y: 720 }
+function boardTagZone(board, tagId, audience = BOARD_AUDIENCE_INTERNAL) {
+  const internalZones = {
+    "sales-admin": { x: 70, y: 135 },
+    chubu: { x: 70, y: 760 },
+    "env-energy": { x: 610, y: 135 },
+    "public-redaction": { x: 610, y: 560 },
+    tohoku: { x: 70, y: 1180 },
+    boring: { x: 610, y: 1180 }
+  };
+  const externalBase = BOARD_EXTERNAL_X;
+  const externalZones = {
+    tohoku: { x: externalBase + 70, y: 135 },
+    chubu: { x: externalBase + 70, y: 640 },
+    boring: { x: externalBase + 610, y: 640 },
+    "public-redaction": { x: externalBase + 610, y: 135 },
+    "env-energy": { x: externalBase + 70, y: 1080 },
+    "sales-admin": { x: externalBase + 610, y: 1080 }
   };
   const tagIndex = Math.max(0, board.tags.findIndex((tag) => tag.id === tagId));
-  return zoneByTag[tagId] || { x: 70 + (tagIndex % 3) * 605, y: 1320 + Math.floor(tagIndex / 3) * 560 };
+  const fallbackX = audience === BOARD_AUDIENCE_EXTERNAL ? externalBase + 70 : 70;
+  const fallbackY = 1320 + Math.floor(tagIndex / 2) * 420;
+  return (audience === BOARD_AUDIENCE_EXTERNAL ? externalZones[tagId] : internalZones[tagId]) || { x: fallbackX + (tagIndex % 2) * 540, y: fallbackY };
 }
 
 function placePanelInTagGroup(board, panel) {
-  const tagId = panelTagId(panel);
-  const zone = boardTagZone(board, tagId);
-  const index = board.panels.filter((item) => item.id !== panel.id && panelTagId(item) === tagId).length;
+  const tagId = panelTagId(panel, board);
+  const audience = panelAudience(panel);
+  const zone = boardTagZone(board, tagId, audience);
+  const index = board.panels.filter((item) => item.id !== panel.id && panelTagId(item, board) === tagId && panelAudience(item) === audience).length;
   panel.x = zone.x + (index % 2) * 292;
   panel.y = zone.y + Math.floor(index / 2) * 176;
 }
@@ -528,7 +620,7 @@ function escapeHtml(value) {
 function loadBoardState() {
   try {
     const saved = JSON.parse(localStorage.getItem("ox-ai-issue-board") || "null");
-    if (saved?.tags?.length && saved?.panels?.length && saved.version === BOARD_VERSION) return saved;
+    if (saved?.tags?.length && saved?.panels?.length && saved.version === BOARD_VERSION) return normalizeBoardState(saved).board;
   } catch {
     // Use the seeded board when local storage is unavailable or malformed.
   }
@@ -540,9 +632,17 @@ async function loadSharedBoard() {
   try {
     const saved = await api("/api/board");
     if (saved.board?.tags?.length && saved.board?.panels?.length && saved.board.version === BOARD_VERSION) {
-      state.board = saved.board;
+      const normalized = normalizeBoardState(saved.board);
+      state.board = normalized.board;
       state.boardUpdatedAt = saved.updatedAt || saved.board.updatedAt || "";
       localStorage.setItem("ox-ai-issue-board", JSON.stringify(state.board));
+      if (normalized.changed && state.me?.authenticated) {
+        const synced = await api("/api/board", {
+          method: "PUT",
+          body: JSON.stringify({ board: state.board })
+        });
+        state.boardUpdatedAt = synced.updatedAt || state.boardUpdatedAt;
+      }
       return;
     }
     state.board = localBoard;
@@ -561,6 +661,7 @@ async function loadSharedBoard() {
 
 function saveBoardState(options = {}) {
   if (!state.board) return;
+  state.board = normalizeBoardState(state.board).board;
   state.board.version = BOARD_VERSION;
   state.board.updatedAt = new Date().toISOString();
   state.boardUpdatedAt = state.board.updatedAt;
@@ -592,9 +693,11 @@ async function pollBoardUpdates() {
     const incoming = saved.updatedAt || saved.board.updatedAt || "";
     if (!incoming || incoming <= state.boardUpdatedAt) return;
     if (saved.board.version !== BOARD_VERSION) return;
-    state.board = saved.board;
+    const normalized = normalizeBoardState(saved.board);
+    state.board = normalized.board;
     state.boardUpdatedAt = incoming;
     localStorage.setItem("ox-ai-issue-board", JSON.stringify(state.board));
+    if (normalized.changed) queueBoardSave();
     if (state.view === "board") renderApp();
   } catch {
     // Keep the local board usable when the shared endpoint is temporarily unavailable.
@@ -653,12 +756,31 @@ function tagById(tagId) {
   return currentBoard().tags.find((tag) => tag.id === tagId);
 }
 
-function panelTagId(panel) {
-  return panel.tag || panel.tags?.[0] || currentBoard().tags[0]?.id || defaultBoardTags[0].id;
+function panelTagId(panel, board = currentBoard()) {
+  return panel.tag || panel.tags?.[0] || board?.tags?.[0]?.id || defaultBoardTags[0].id;
 }
 
 function primaryTag(panel) {
   return tagById(panelTagId(panel));
+}
+
+function panelAudience(panel) {
+  return panel?.audience === BOARD_AUDIENCE_EXTERNAL ? BOARD_AUDIENCE_EXTERNAL : BOARD_AUDIENCE_INTERNAL;
+}
+
+function boardAudienceFromX(x) {
+  return Number(x || 0) >= BOARD_AUDIENCE_SWITCH_X ? BOARD_AUDIENCE_EXTERNAL : BOARD_AUDIENCE_INTERNAL;
+}
+
+function audienceLabel(audience) {
+  return boardAudienceLabels[panelAudience({ audience })]?.label || boardAudienceLabels[BOARD_AUDIENCE_INTERNAL].label;
+}
+
+function defaultAudienceForPanel(panel, board = currentBoard()) {
+  if (defaultPanelAudience[panel.id]) return defaultPanelAudience[panel.id];
+  const tagId = panelTagId(panel, board);
+  if (["tohoku", "boring"].includes(tagId)) return BOARD_AUDIENCE_EXTERNAL;
+  return BOARD_AUDIENCE_INTERNAL;
 }
 
 async function api(path, options = {}) {
@@ -834,6 +956,7 @@ function renderIssueBoard(container) {
       <div class="board-workspace">
         <div class="mindmap-board" data-board-scroll>
           <div class="board-canvas" data-board-canvas style="${boardCanvasStyle(board)}">
+            ${renderBoardLanes(board)}
             ${renderBoardRegions(board)}
             ${board.panels.map(renderBoardCard).join("")}
           </div>
@@ -849,8 +972,9 @@ function boardCanvasStyle(board) {
   const panels = board?.panels || [];
   const right = panels.reduce((max, panel) => Math.max(max, boardDisplayX(panel.x) + panelWidth(panel)), 0);
   const bottom = panels.reduce((max, panel) => Math.max(max, boardDisplayY(panel.y) + panelHeight(panel)), 0);
-  const width = Math.max(2800, right + BOARD_VIEW_PADDING);
-  const height = Math.max(2100, bottom + BOARD_VIEW_PADDING);
+  const laneRight = boardDisplayX(BOARD_EXTERNAL_X + BOARD_AUDIENCE_LANE_WIDTH + 260);
+  const width = Math.max(3200, laneRight, right + BOARD_VIEW_PADDING);
+  const height = Math.max(2200, bottom + BOARD_VIEW_PADDING);
   return `width:${width}px; height:${height}px;`;
 }
 
@@ -860,6 +984,35 @@ function boardDisplayX(value) {
 
 function boardDisplayY(value) {
   return Number(value || 0) + BOARD_VIEW_PADDING;
+}
+
+function boardLaneHeight(board) {
+  const panels = board?.panels || [];
+  const bottom = panels.reduce((max, panel) => Math.max(max, Number(panel.y || 0) + panelHeight(panel)), BOARD_LANE_TOP + 1100);
+  return Math.max(1450, bottom - BOARD_LANE_TOP + 420);
+}
+
+function renderBoardLanes(board) {
+  const height = boardLaneHeight(board);
+  const internalLeft = boardDisplayX(BOARD_MIN_COORD) - 10;
+  const internalTop = boardDisplayY(BOARD_LANE_TOP) - 58;
+  const internalWidth = BOARD_AUDIENCE_SWITCH_X - BOARD_MIN_COORD - 28;
+  const externalLeft = boardDisplayX(BOARD_AUDIENCE_SWITCH_X) + 28;
+  const externalWidth = BOARD_AUDIENCE_LANE_WIDTH + 360;
+  const headingTop = boardDisplayY(BOARD_LANE_TOP) - 78;
+  return html`
+    <section class="audience-lane internal" style="left:${internalLeft}px; top:${internalTop}px; width:${internalWidth}px; height:${height}px;">
+    </section>
+    <section class="audience-lane external" style="left:${externalLeft}px; top:${internalTop}px; width:${externalWidth}px; height:${height}px;">
+    </section>
+    <div class="audience-heading internal" style="left:${boardDisplayX(0)}px; top:${headingTop}px;">
+      <span>${boardAudienceLabels[BOARD_AUDIENCE_INTERNAL].label}</span>
+      <small>${boardAudienceLabels[BOARD_AUDIENCE_INTERNAL].description}</small>
+    </div>
+    <div class="audience-heading external" style="left:${boardDisplayX(BOARD_EXTERNAL_X)}px; top:${headingTop}px;">
+      <span>${boardAudienceLabels[BOARD_AUDIENCE_EXTERNAL].label}</span>
+      <small>${boardAudienceLabels[BOARD_AUDIENCE_EXTERNAL].description}</small>
+    </div>`;
 }
 
 function presenceHtml() {
@@ -881,13 +1034,15 @@ function presenceHtml() {
 function renderBoardCard(panel) {
   const tag = primaryTag(panel);
   const color = tag?.color || "#9aa6b2";
+  const audience = panelAudience(panel);
   const width = panelWidth(panel);
   const height = panelHeight(panel);
   const content = panel.content || panel.detail || panel.summary || "内容を入力してください。";
   return html`
-    <article class="board-card" data-board-card="${escapeHtml(panel.id)}" style="left:${boardDisplayX(panel.x)}px; top:${boardDisplayY(panel.y)}px; width:${width}px; min-height:${height}px; --card-color:${escapeHtml(color)};">
+    <article class="board-card" data-board-card="${escapeHtml(panel.id)}" data-audience="${audience}" style="left:${boardDisplayX(panel.x)}px; top:${boardDisplayY(panel.y)}px; width:${width}px; min-height:${height}px; --card-color:${escapeHtml(color)};">
       <div class="board-card-top">
         <span class="stage-badge">${escapeHtml(tag?.name || "未分類")}</span>
+        <span class="audience-badge ${audience}">${escapeHtml(audienceLabel(audience))}</span>
         <span class="tag-dot" aria-hidden="true"></span>
       </div>
       <h2>${escapeHtml(panel.title)}</h2>
@@ -897,8 +1052,12 @@ function renderBoardCard(panel) {
 }
 
 function renderBoardRegions(board) {
-  return board.tags.map((tag) => {
-    const panels = board.panels.filter((panel) => panelTagId(panel) === tag.id);
+  const groups = [];
+  [BOARD_AUDIENCE_INTERNAL, BOARD_AUDIENCE_EXTERNAL].forEach((audience) => {
+    board.tags.forEach((tag) => groups.push({ audience, tag }));
+  });
+  return groups.map(({ audience, tag }) => {
+    const panels = board.panels.filter((panel) => panelAudience(panel) === audience && panelTagId(panel, board) === tag.id);
     if (!panels.length) return "";
     const left = Math.min(...panels.map((panel) => boardDisplayX(panel.x))) - 28;
     const top = Math.min(...panels.map((panel) => boardDisplayY(panel.y))) - 42;
@@ -918,6 +1077,9 @@ function renderBoardModal() {
   const content = panel.content || panel.detail || panel.summary || "";
   const tagOptions = currentBoard().tags
     .map((tag) => `<option value="${escapeHtml(tag.id)}" ${panelTagId(panel) === tag.id ? "selected" : ""}>${escapeHtml(tag.name)}</option>`)
+    .join("");
+  const audienceOptions = [BOARD_AUDIENCE_INTERNAL, BOARD_AUDIENCE_EXTERNAL]
+    .map((audience) => `<option value="${audience}" ${panelAudience(panel) === audience ? "selected" : ""}>${escapeHtml(boardAudienceLabels[audience].label)}: ${escapeHtml(boardAudienceLabels[audience].description)}</option>`)
     .join("");
   return html`
     <div class="board-modal-backdrop" data-board-close>
@@ -939,6 +1101,10 @@ function renderBoardModal() {
               <label class="field">
                 <span>タグ</span>
                 <select name="tag">${tagOptions}</select>
+              </label>
+              <label class="field">
+                <span>属性</span>
+                <select name="audience">${audienceOptions}</select>
               </label>
               <label class="field">
                 <span>内容</span>
@@ -1042,8 +1208,8 @@ function wireBoardCanvas(container) {
   const scroller = container.querySelector("[data-board-scroll]");
   if (!canvas) return;
   if (scroller) {
-    const initialLeft = BOARD_VIEW_PADDING - 22;
-    const initialTop = BOARD_VIEW_PADDING - 46;
+    const initialLeft = Math.round((BOARD_VIEW_PADDING - 22) * BOARD_RENDER_ZOOM);
+    const initialTop = Math.round((BOARD_VIEW_PADDING - 46) * BOARD_RENDER_ZOOM);
     scroller.scrollLeft = Number.isFinite(state.boardScrollLeft) ? state.boardScrollLeft : initialLeft;
     scroller.scrollTop = Number.isFinite(state.boardScrollTop) ? state.boardScrollTop : initialTop;
     state.boardScrollLeft = scroller.scrollLeft;
@@ -1122,8 +1288,15 @@ function wireBoardCanvas(container) {
       } else {
         panel.x = Math.max(BOARD_MIN_COORD, Math.round(start.panelX + dx));
         panel.y = Math.max(BOARD_MIN_COORD, Math.round(start.panelY + dy));
+        panel.audience = boardAudienceFromX(panel.x + panelWidth(panel) / 2);
         card.style.left = `${boardDisplayX(panel.x)}px`;
         card.style.top = `${boardDisplayY(panel.y)}px`;
+        card.dataset.audience = panel.audience;
+        const badge = card.querySelector(".audience-badge");
+        if (badge) {
+          badge.textContent = audienceLabel(panel.audience);
+          badge.className = `audience-badge ${panel.audience}`;
+        }
       }
     });
     card.addEventListener("pointerup", () => {
@@ -1213,17 +1386,20 @@ function saveBoardPanelForm(form) {
   if (!panel) return;
   const data = new FormData(form);
   const previousTag = panelTagId(panel);
+  const previousAudience = panelAudience(panel);
   panel.title = String(data.get("title") || "新しい課題").trim();
   const content = String(data.get("content") || "").trim();
   const tagId = String(data.get("tag") || currentBoard().tags[0]?.id || defaultBoardTags[0].id);
+  const audience = String(data.get("audience") || previousAudience);
   panel.tag = tagId;
   panel.tags = [tagId];
+  panel.audience = audience === BOARD_AUDIENCE_EXTERNAL ? BOARD_AUDIENCE_EXTERNAL : BOARD_AUDIENCE_INTERNAL;
   panel.content = content;
   panel.summary = content;
   panel.detail = content;
   panel.solutions = Array.from(form.querySelectorAll("[name^='solution-']")).map((input) => input.value.trim()).filter(Boolean);
   panel.progress = Array.from(form.querySelectorAll("[name^='progress-']")).map((input) => input.value.trim()).filter(Boolean);
-  if (previousTag !== tagId) placePanelInTagGroup(currentBoard(), panel);
+  if (previousTag !== tagId || previousAudience !== panel.audience) placePanelInTagGroup(currentBoard(), panel);
   saveBoardState();
   state.boardModal = null;
   renderApp();
@@ -1239,7 +1415,7 @@ function mutateBoardPanelList(field, fallback) {
 
 function addBoardPanelAt(x, y) {
   const tagId = currentBoard().tags[0]?.id || defaultBoardTags[0].id;
-  const panel = boardPanel(uid("panel"), "新しい課題", "issue", x, y, [tagId], "", "内容を入力してください。", [], [], { tag: tagId, w: 274, h: 148 });
+  const panel = boardPanel(uid("panel"), "新しい課題", "issue", x, y, [tagId], "", "内容を入力してください。", [], [], { tag: tagId, audience: boardAudienceFromX(x + 137), w: 274, h: 148 });
   currentBoard().panels.push(panel);
   state.boardModal = { panelId: panel.id };
   saveBoardState();
@@ -1271,6 +1447,7 @@ function boardPanelPrompt(panel) {
   const tags = (panel.tags || []).map((tagId) => tagById(tagId)?.name).filter(Boolean).join("、") || "未分類";
   return `${panel.title}
 
+属性: ${audienceLabel(panelAudience(panel))}
 タグ: ${tags}
 
 内容:
