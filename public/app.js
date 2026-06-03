@@ -26,6 +26,12 @@ let state = {
   tsThreshold: 72,
   tsSensitivity: 66,
   board: null,
+  boardUpdatedAt: "",
+  boardPoll: null,
+  boardSaveTimer: null,
+  boardInteracting: false,
+  presence: [],
+  presencePoll: null,
   boardModal: null,
   polling: null
 };
@@ -524,10 +530,102 @@ function loadBoardState() {
   return defaultBoard();
 }
 
-function saveBoardState() {
+async function loadSharedBoard() {
+  const localBoard = loadBoardState();
+  try {
+    const saved = await api("/api/board");
+    if (saved.board?.tags?.length && saved.board?.panels?.length && saved.board.version === BOARD_VERSION) {
+      state.board = saved.board;
+      state.boardUpdatedAt = saved.updatedAt || saved.board.updatedAt || "";
+      localStorage.setItem("ox-ai-issue-board", JSON.stringify(state.board));
+      return;
+    }
+    state.board = localBoard;
+    saveBoardState({ remote: false });
+    if (state.me?.authenticated) {
+      const initial = await api("/api/board", {
+        method: "PUT",
+        body: JSON.stringify({ board: state.board })
+      });
+      state.boardUpdatedAt = initial.updatedAt || state.boardUpdatedAt;
+    }
+  } catch {
+    state.board = localBoard;
+  }
+}
+
+function saveBoardState(options = {}) {
   if (!state.board) return;
   state.board.version = BOARD_VERSION;
+  state.board.updatedAt = new Date().toISOString();
+  state.boardUpdatedAt = state.board.updatedAt;
   localStorage.setItem("ox-ai-issue-board", JSON.stringify(state.board));
+  if (options.remote === false || !state.me?.authenticated) return;
+  queueBoardSave();
+}
+
+function queueBoardSave() {
+  clearTimeout(state.boardSaveTimer);
+  state.boardSaveTimer = setTimeout(async () => {
+    try {
+      const saved = await api("/api/board", {
+        method: "PUT",
+        body: JSON.stringify({ board: state.board })
+      });
+      state.boardUpdatedAt = saved.updatedAt || state.boardUpdatedAt;
+    } catch {
+      // Local changes remain in localStorage and will be retried on the next edit.
+    }
+  }, 350);
+}
+
+async function pollBoardUpdates() {
+  if (state.boardModal || state.boardInteracting) return;
+  try {
+    const saved = await api("/api/board");
+    if (!saved.board?.tags?.length || !saved.board?.panels?.length) return;
+    const incoming = saved.updatedAt || saved.board.updatedAt || "";
+    if (!incoming || incoming <= state.boardUpdatedAt) return;
+    if (saved.board.version !== BOARD_VERSION) return;
+    state.board = saved.board;
+    state.boardUpdatedAt = incoming;
+    localStorage.setItem("ox-ai-issue-board", JSON.stringify(state.board));
+    if (state.view === "board") renderApp();
+  } catch {
+    // Keep the local board usable when the shared endpoint is temporarily unavailable.
+  }
+}
+
+async function heartbeatPresence() {
+  try {
+    const data = await api("/api/presence", { method: "POST", body: "{}" });
+    state.presence = data.participants || [];
+    if (state.view === "board" && !state.boardModal) renderPresenceOnly();
+  } catch {
+    state.presence = [];
+  }
+}
+
+function startRealtimeSync() {
+  stopRealtimeSync();
+  heartbeatPresence();
+  pollBoardUpdates();
+  state.presencePoll = setInterval(heartbeatPresence, 5000);
+  state.boardPoll = setInterval(pollBoardUpdates, 3500);
+}
+
+function stopRealtimeSync() {
+  clearInterval(state.presencePoll);
+  clearInterval(state.boardPoll);
+  clearTimeout(state.boardSaveTimer);
+  state.presencePoll = null;
+  state.boardPoll = null;
+  state.boardSaveTimer = null;
+}
+
+function renderPresenceOnly() {
+  const target = document.querySelector("[data-presence]");
+  if (target) target.innerHTML = presenceHtml();
 }
 
 function resetBoardState() {
@@ -575,7 +673,6 @@ async function api(path, options = {}) {
 async function init() {
   const me = await api("/api/me");
   state.me = me;
-  state.board = loadBoardState();
   const archiveMatch = /^#archive:?([^/]*)?/.exec(location.hash);
   state.view = archiveMatch ? "archive" : location.hash === "#app-create" ? "app-create" : "board";
   if (archiveMatch?.[1]) state.activeProjectId = archiveMatch[1];
@@ -584,6 +681,8 @@ async function init() {
     return;
   }
   await loadWorkspace();
+  await loadSharedBoard();
+  startRealtimeSync();
   renderApp();
 }
 
@@ -622,7 +721,10 @@ function renderLogin() {
           password: form.get("password")
         })
       });
+      state.me = await api("/api/me");
       await loadWorkspace();
+      await loadSharedBoard();
+      startRealtimeSync();
       renderApp();
     } catch {
       document.getElementById("loginError").textContent = "IDまたはパスワードが違います。";
@@ -661,6 +763,7 @@ function renderApp() {
     </section>`;
 
   document.getElementById("logoutBtn").addEventListener("click", async () => {
+    stopRealtimeSync();
     await api("/api/logout", { method: "POST", body: "{}" });
     renderLogin();
   });
@@ -691,19 +794,22 @@ function renderIssueBoard(container) {
   const board = currentBoard();
   container.innerHTML = html`
     <section class="issue-board-shell">
-      <div class="board-toolbar">
-        <div>
-          <p class="eyebrow">課題ボード</p>
-          <h1>AI活用テーマを整理する</h1>
+      <div class="board-mini-nav">
+        <div class="board-mini-title">
+          <span>課題ボード</span>
+          <strong>AI活用テーマを整理する</strong>
         </div>
-        <div class="board-toolbar-actions">
-          <button type="button" data-board-add>＋ 課題を追加</button>
+        <div class="board-mini-actions">
+          <div class="presence-bar" data-presence>${presenceHtml()}</div>
           <button type="button" class="ghost" data-board-layout>整列</button>
-          <button type="button" class="ghost" data-board-tags>タグ編集</button>
         </div>
       </div>
 
       <div class="board-workspace">
+        <div class="board-action-strip">
+          <button type="button" data-board-add>＋ 課題を追加</button>
+          <button type="button" class="ghost" data-board-tags>タグ編集</button>
+        </div>
         <div class="mindmap-board" data-board-scroll>
           <div class="board-canvas" data-board-canvas>
             ${renderBoardRegions(board)}
@@ -715,6 +821,21 @@ function renderIssueBoard(container) {
     ${state.boardModal ? renderBoardModal() : ""}`;
 
   wireBoard(container);
+}
+
+function presenceHtml() {
+  const participants = state.presence || [];
+  const shown = participants.slice(0, 8);
+  if (!shown.length) return `<span class="presence-label">ここにいる</span><span class="presence-empty">確認中</span>`;
+  return html`
+    <span class="presence-label">ここにいる</span>
+    <span class="presence-avatars">
+      ${shown.map((person) => `
+        <span class="presence-avatar ${person.self ? "self" : ""}" style="--presence-color:${escapeHtml(person.color || "#64748b")}" title="${escapeHtml(person.name)}">
+          ${escapeHtml(person.name.replace(/^参加者\s*/, "").slice(0, 2) || "人")}
+        </span>`).join("")}
+      ${participants.length > shown.length ? `<span class="presence-more">+${participants.length - shown.length}</span>` : ""}
+    </span>`;
 }
 
 function renderBoardCard(panel) {
@@ -853,7 +974,10 @@ function renderTagManagerModal() {
 }
 
 function wireBoard(container) {
-  container.querySelector("[data-board-layout]")?.addEventListener("click", autoLayoutBoard);
+  container.querySelector("[data-board-layout]")?.addEventListener("click", () => {
+    if (!confirm("現在の配置をタグごとに整列します。手動で動かした位置も更新されます。実行しますか？")) return;
+    autoLayoutBoard();
+  });
   container.querySelector("[data-board-add]")?.addEventListener("click", addBoardPanelFromButton);
   container.querySelector("[data-board-tags]")?.addEventListener("click", () => {
     state.boardModal = { tagsOnly: true };
@@ -888,6 +1012,7 @@ function wireBoardCanvas(container) {
       left: scroller?.scrollLeft || 0,
       top: scroller?.scrollTop || 0
     };
+    state.boardInteracting = true;
     scroller?.classList.add("panning");
   });
   canvas.addEventListener("pointermove", (event) => {
@@ -898,10 +1023,12 @@ function wireBoardCanvas(container) {
   canvas.addEventListener("pointerup", () => {
     if (!panStart) return;
     panStart = null;
+    state.boardInteracting = false;
     scroller?.classList.remove("panning");
   });
   canvas.addEventListener("pointercancel", () => {
     panStart = null;
+    state.boardInteracting = false;
     scroller?.classList.remove("panning");
   });
   container.querySelectorAll("[data-board-card]").forEach((card) => {
@@ -925,6 +1052,7 @@ function wireBoardCanvas(container) {
         scale: Number.isFinite(scale) && scale > 0 ? scale : 1,
         moved: false
       };
+      state.boardInteracting = true;
       card.classList.add(resizing ? "resizing" : "dragging");
     });
     card.addEventListener("pointermove", (event) => {
@@ -955,6 +1083,7 @@ function wireBoardCanvas(container) {
         state.boardModal = { panelId: panel.id };
         renderApp();
       }
+      state.boardInteracting = false;
       start = null;
     });
   });

@@ -303,6 +303,12 @@ p {
   padding: 28px 0 54px;
 }
 
+.shell:has(.issue-board-shell) {
+  width: min(1620px, calc(100% - 18px));
+  padding-top: 10px;
+  padding-bottom: 16px;
+}
+
 .page-head {
   display: flex;
   justify-content: space-between;
@@ -428,36 +434,132 @@ p {
 
 .issue-board-shell {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
-.board-toolbar {
+.board-mini-nav {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   gap: 16px;
+  min-height: 38px;
 }
 
-.board-toolbar h1 {
-  margin-bottom: 0;
-}
-
-.board-toolbar-actions {
+.board-mini-title {
   display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.board-mini-title span {
+  color: var(--teal-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.board-mini-title strong {
+  color: #4c6076;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.board-mini-actions {
+  display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
+.presence-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 3px 8px;
+  border: 1px solid #dbe7f4;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #4c6076;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.presence-label {
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.presence-empty {
+  color: #8a9aac;
+  white-space: nowrap;
+}
+
+.presence-avatars {
+  display: flex;
+  align-items: center;
+}
+
+.presence-avatar,
+.presence-more {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  margin-left: -5px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--presence-color, #64748b);
+  color: white;
+  font-size: 11px;
+  font-weight: 900;
+  box-shadow: 0 5px 12px rgba(15, 46, 90, 0.12);
+}
+
+.presence-avatar:first-child {
+  margin-left: 0;
+}
+
+.presence-avatar.self {
+  outline: 2px solid rgba(29, 99, 183, 0.28);
+}
+
+.presence-more {
+  background: #e7eef7;
+  color: #42576f;
+}
+
 .board-workspace {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
 }
 
+.board-action-strip {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  border: 1px solid rgba(190, 216, 245, 0.92);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 26px rgba(15, 46, 90, 0.12);
+}
+
+.board-action-strip button {
+  white-space: nowrap;
+}
+
 .mindmap-board {
-  height: min(780px, calc(100vh - 190px));
-  min-height: 570px;
+  height: clamp(620px, calc(100vh - 138px), 920px);
+  min-height: 620px;
   overflow: auto;
   border: 1px solid #cbdced;
   border-radius: 8px;
@@ -479,7 +581,7 @@ p {
   width: 1900px;
   height: 1420px;
   cursor: grab;
-  zoom: 0.78;
+  zoom: 0.7;
 }
 
 .tag-region {
@@ -2871,7 +2973,7 @@ p {
   .consult-builder,
   .consult-type-switch,
   .consult-scenarios,
-  .board-toolbar,
+  .board-mini-nav,
   .board-workspace,
   .modal-grid,
   .modal-main-fields {
@@ -2896,6 +2998,9 @@ p {
   }
   .brand {
     min-width: auto;
+  }
+  .board-mini-actions {
+    justify-content: flex-start;
   }
 }
 
@@ -2933,6 +3038,23 @@ p {
   }
   .mindmap-board {
     min-height: 520px;
+    height: calc(100vh - 190px);
+  }
+  .board-mini-nav {
+    gap: 8px;
+  }
+  .board-mini-title {
+    flex-wrap: wrap;
+  }
+  .board-action-strip {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    flex-wrap: wrap;
+  }
+  .presence-bar {
+    border-radius: 8px;
+    padding: 5px 8px;
   }
   .shell {
     width: min(100% - 20px, 1240px);

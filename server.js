@@ -29,9 +29,12 @@ const CODEX_TIMEOUT_MS = Number(process.env.OX_CODEX_TIMEOUT_MS || 180000);
 const DEPLOY_TOKEN = process.env.OX_DEPLOY_TOKEN || "";
 const DEPLOY_REQUESTS_DIR = path.join(DATA_DIR, "deploy-requests");
 const DEPLOY_STATUS_FILE = path.join(DATA_DIR, "deploy-status.json");
+const BOARD_FILE = path.join(DATA_DIR, "board.json");
+const PRESENCE_TTL_MS = 25 * 1000;
 
 const sessions = new Map();
 const jobs = new Map();
+const participantColors = ["#1d63b7", "#0f8b8d", "#f97316", "#7c3aed", "#16a34a", "#dc2626", "#475569", "#0ea5e9"];
 
 const specializedTemplates = [
   {
@@ -136,6 +139,39 @@ function validDeployToken(value) {
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
+function publicParticipant(session, selfSid = "") {
+  return {
+    id: session.publicId,
+    name: session.participantName,
+    color: session.color,
+    self: session.sid === selfSid
+  };
+}
+
+function activeParticipants(selfSid = "") {
+  const now = Date.now();
+  const out = [];
+  for (const [sid, session] of sessions.entries()) {
+    if (now - (session.lastSeen || session.createdAt) > PRESENCE_TTL_MS) continue;
+    out.push(publicParticipant(session, selfSid));
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name, "ja"));
+}
+
+async function loadSharedBoard() {
+  return readJsonFile(BOARD_FILE, null);
+}
+
+async function saveSharedBoard(board, session) {
+  const saved = {
+    board,
+    updatedAt: new Date().toISOString(),
+    updatedBy: session?.participantName || "参加者"
+  };
+  await fsp.writeFile(BOARD_FILE, JSON.stringify(saved, null, 2), "utf8");
+  return saved;
+}
+
 async function readJsonFile(filePath, fallback) {
   try {
     return JSON.parse(await fsp.readFile(filePath, "utf8"));
@@ -223,6 +259,7 @@ function getSession(req) {
     sessions.delete(sid);
     return null;
   }
+  session.lastSeen = Date.now();
   return session;
 }
 
@@ -2894,7 +2931,16 @@ async function router(req, res) {
     else payload = Object.fromEntries(new URLSearchParams(body.toString("utf8")).entries());
     if (payload.id === AUTH_ID && payload.password === AUTH_PASS) {
       const sid = crypto.randomBytes(24).toString("hex");
-      sessions.set(sid, { user: payload.id, createdAt: Date.now() });
+      const index = sessions.size + 1;
+      sessions.set(sid, {
+        sid,
+        publicId: crypto.createHash("sha1").update(sid).digest("hex").slice(0, 10),
+        user: payload.id,
+        participantName: `参加者 ${String(index).padStart(2, "0")}`,
+        color: participantColors[(index - 1) % participantColors.length],
+        createdAt: Date.now(),
+        lastSeen: Date.now()
+      });
       setLoginCookie(res, sid);
       sendJson(res, 200, { ok: true, user: payload.id });
       return;
@@ -2925,7 +2971,11 @@ async function router(req, res) {
 
   if (req.method === "GET" && pathname === "/api/me") {
     const session = getSession(req);
-    sendJson(res, 200, { authenticated: Boolean(session), user: session?.user || null });
+    sendJson(res, 200, {
+      authenticated: Boolean(session),
+      user: session?.user || null,
+      participant: session ? publicParticipant(session, session.sid) : null
+    });
     return;
   }
 
@@ -2939,6 +2989,26 @@ async function router(req, res) {
     }
     if (req.method === "GET" && pathname === "/api/projects") {
       sendJson(res, 200, { projects: await listProjects() });
+      return;
+    }
+    if (req.method === "GET" && pathname === "/api/board") {
+      const saved = await loadSharedBoard();
+      sendJson(res, 200, saved || { board: null, updatedAt: null, updatedBy: null });
+      return;
+    }
+    if (req.method === "PUT" && pathname === "/api/board") {
+      const body = await readBody(req, 2 * 1024 * 1024);
+      const payload = JSON.parse(body.toString("utf8") || "{}");
+      if (!payload.board || typeof payload.board !== "object" || !Array.isArray(payload.board.panels)) {
+        sendJson(res, 400, { error: "invalid_board" });
+        return;
+      }
+      sendJson(res, 200, await saveSharedBoard(payload.board, session));
+      return;
+    }
+    if (req.method === "POST" && pathname === "/api/presence") {
+      session.lastSeen = Date.now();
+      sendJson(res, 200, { participants: activeParticipants(session.sid), now: new Date().toISOString() });
       return;
     }
     if (req.method === "POST" && pathname === "/api/projects") {
