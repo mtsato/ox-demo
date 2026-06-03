@@ -30,11 +30,16 @@ let state = {
   boardPoll: null,
   boardSaveTimer: null,
   boardInteracting: false,
+  boardScrollLeft: null,
+  boardScrollTop: null,
   presence: [],
   presencePoll: null,
   boardModal: null,
   polling: null
 };
+
+const BOARD_VIEW_PADDING = 720;
+const BOARD_MIN_COORD = -BOARD_VIEW_PADDING + 48;
 
 const statusLabel = {
   queued: "待機中",
@@ -842,11 +847,19 @@ function renderIssueBoard(container) {
 
 function boardCanvasStyle(board) {
   const panels = board?.panels || [];
-  const right = panels.reduce((max, panel) => Math.max(max, Number(panel.x || 0) + panelWidth(panel)), 0);
-  const bottom = panels.reduce((max, panel) => Math.max(max, Number(panel.y || 0) + panelHeight(panel)), 0);
-  const width = Math.max(2400, right + 700);
-  const height = Math.max(1700, bottom + 620);
+  const right = panels.reduce((max, panel) => Math.max(max, boardDisplayX(panel.x) + panelWidth(panel)), 0);
+  const bottom = panels.reduce((max, panel) => Math.max(max, boardDisplayY(panel.y) + panelHeight(panel)), 0);
+  const width = Math.max(2800, right + BOARD_VIEW_PADDING);
+  const height = Math.max(2100, bottom + BOARD_VIEW_PADDING);
   return `width:${width}px; height:${height}px;`;
+}
+
+function boardDisplayX(value) {
+  return Number(value || 0) + BOARD_VIEW_PADDING;
+}
+
+function boardDisplayY(value) {
+  return Number(value || 0) + BOARD_VIEW_PADDING;
 }
 
 function presenceHtml() {
@@ -872,7 +885,7 @@ function renderBoardCard(panel) {
   const height = panelHeight(panel);
   const content = panel.content || panel.detail || panel.summary || "内容を入力してください。";
   return html`
-    <article class="board-card" data-board-card="${escapeHtml(panel.id)}" style="left:${panel.x}px; top:${panel.y}px; width:${width}px; min-height:${height}px; --card-color:${escapeHtml(color)};">
+    <article class="board-card" data-board-card="${escapeHtml(panel.id)}" style="left:${boardDisplayX(panel.x)}px; top:${boardDisplayY(panel.y)}px; width:${width}px; min-height:${height}px; --card-color:${escapeHtml(color)};">
       <div class="board-card-top">
         <span class="stage-badge">${escapeHtml(tag?.name || "未分類")}</span>
         <span class="tag-dot" aria-hidden="true"></span>
@@ -887,10 +900,10 @@ function renderBoardRegions(board) {
   return board.tags.map((tag) => {
     const panels = board.panels.filter((panel) => panelTagId(panel) === tag.id);
     if (!panels.length) return "";
-    const left = Math.min(...panels.map((panel) => panel.x)) - 28;
-    const top = Math.min(...panels.map((panel) => panel.y)) - 42;
-    const right = Math.max(...panels.map((panel) => panel.x + panelWidth(panel))) + 28;
-    const bottom = Math.max(...panels.map((panel) => panel.y + panelHeight(panel))) + 34;
+    const left = Math.min(...panels.map((panel) => boardDisplayX(panel.x))) - 28;
+    const top = Math.min(...panels.map((panel) => boardDisplayY(panel.y))) - 42;
+    const right = Math.max(...panels.map((panel) => boardDisplayX(panel.x) + panelWidth(panel))) + 28;
+    const bottom = Math.max(...panels.map((panel) => boardDisplayY(panel.y) + panelHeight(panel))) + 34;
     return html`
       <section class="tag-region" style="left:${left}px; top:${top}px; width:${right - left}px; height:${bottom - top}px; --tag-color:${escapeHtml(tag.color)};">
         <span>${escapeHtml(tag.name)}</span>
@@ -1028,6 +1041,18 @@ function wireBoardCanvas(container) {
   const canvas = container.querySelector("[data-board-canvas]");
   const scroller = container.querySelector("[data-board-scroll]");
   if (!canvas) return;
+  if (scroller) {
+    const initialLeft = BOARD_VIEW_PADDING - 22;
+    const initialTop = BOARD_VIEW_PADDING - 46;
+    scroller.scrollLeft = Number.isFinite(state.boardScrollLeft) ? state.boardScrollLeft : initialLeft;
+    scroller.scrollTop = Number.isFinite(state.boardScrollTop) ? state.boardScrollTop : initialTop;
+    state.boardScrollLeft = scroller.scrollLeft;
+    state.boardScrollTop = scroller.scrollTop;
+    scroller.addEventListener("scroll", () => {
+      state.boardScrollLeft = scroller.scrollLeft;
+      state.boardScrollTop = scroller.scrollTop;
+    }, { passive: true });
+  }
   let panStart = null;
   canvas.addEventListener("pointerdown", (event) => {
     if (event.target.closest("[data-board-card]")) return;
@@ -1046,6 +1071,8 @@ function wireBoardCanvas(container) {
     if (!panStart || !scroller) return;
     scroller.scrollLeft = panStart.left - (event.clientX - panStart.x);
     scroller.scrollTop = panStart.top - (event.clientY - panStart.y);
+    state.boardScrollLeft = scroller.scrollLeft;
+    state.boardScrollTop = scroller.scrollTop;
   });
   canvas.addEventListener("pointerup", () => {
     if (!panStart) return;
@@ -1093,10 +1120,10 @@ function wireBoardCanvas(container) {
         card.style.width = `${panel.w}px`;
         card.style.minHeight = `${panel.h}px`;
       } else {
-        panel.x = Math.max(0, Math.round(start.panelX + dx));
-        panel.y = Math.max(0, Math.round(start.panelY + dy));
-        card.style.left = `${panel.x}px`;
-        card.style.top = `${panel.y}px`;
+        panel.x = Math.max(BOARD_MIN_COORD, Math.round(start.panelX + dx));
+        panel.y = Math.max(BOARD_MIN_COORD, Math.round(start.panelY + dy));
+        card.style.left = `${boardDisplayX(panel.x)}px`;
+        card.style.top = `${boardDisplayY(panel.y)}px`;
       }
     });
     card.addEventListener("pointerup", () => {
@@ -1221,8 +1248,8 @@ function addBoardPanelAt(x, y) {
 
 function addBoardPanelFromButton() {
   const scroller = document.querySelector("[data-board-scroll]");
-  const x = Math.round((scroller?.scrollLeft || 0) + 120);
-  const y = Math.round((scroller?.scrollTop || 0) + 120);
+  const x = Math.max(BOARD_MIN_COORD, Math.round((scroller?.scrollLeft || state.boardScrollLeft || BOARD_VIEW_PADDING) - BOARD_VIEW_PADDING + 120));
+  const y = Math.max(BOARD_MIN_COORD, Math.round((scroller?.scrollTop || state.boardScrollTop || BOARD_VIEW_PADDING) - BOARD_VIEW_PADDING + 120));
   addBoardPanelAt(x, y);
 }
 
